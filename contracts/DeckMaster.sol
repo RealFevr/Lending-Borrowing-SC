@@ -9,39 +9,45 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "./interfaces/IDeckMaster.sol";
+import "./interfaces/ICollectionManager.sol";
+import "./interfaces/IServiceManager.sol";
 import "./interfaces/BundlesInterface.sol";
 
 contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
-
-    EnumerableSet.AddressSet private allowedTokens;
-    EnumerableSet.AddressSet private allowedCollections;
-    EnumerableSet.AddressSet private allowedBundles;
+    
     mapping(uint256 => ServiceFee) private serviceFees;
     mapping(address => uint256) private linkServiceFees;
-    mapping(address => uint256) private depositLimitations;
+    
     mapping(address => uint256) private lockedTokenAmount;
-    mapping(uint256 => DeckLPInfo) private deckLpInfos;
-    mapping(uint256 => LendInfo) private lendInfos;
     mapping(address => BuyBackFee) private buybackFees;
     mapping(address => mapping(uint256 => uint256)) public claimableAmount;
 
+    ICollectionManager public collectionManager;
+    IServiceManager public serviceManager;
     address constant DEAD = 0x000000000000000000000000000000000000dEaD;
     address public baseToken;
     uint256 private serviceFeeId;
     uint256 private deckLpId;
-    uint256 public collectionAmountForBundle = 50;
+    
 
     uint16 public BASE_POINT = 1000;
 
     modifier onlyAllowedToken(address _token) {
-        require (allowedTokens.contains(_token), "not acceptable payment token address");
+        require (collectionManager.isAllowedToken(_token), "not acceptable payment token address");
         _;
     }
 
-    constructor (address _baseToken) ERC721("DeckLp", "DeckLP") {
+    constructor (
+        address _baseToken,
+        address _collectionManager,
+        address _serviceManager
+    ) ERC721("DeckLp", "DeckLP") {
         require (_baseToken != address(0), "zero base token address");
+        require (_collectionManager != address(0), "zero collection manager address");
+        collectionManager = ICollectionManager(_collectionManager);
+        serviceManager = IServiceManager(_serviceManager);
         baseToken = _baseToken;
         serviceFeeId = 1;
         deckLpId = 1;
@@ -50,68 +56,41 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
     /// @inheritdoc IDeckMaster
     function setCollectionAmountForBundle(uint256 _amount) external onlyOwner override {
         require (_amount > 0, "invalid amount");
-        collectionAmountForBundle = _amount;
+        collectionManager.setCollectionAmountForBundle(_amount);
     }
     
     /// @inheritdoc IDeckMaster
     function setAcceptableERC20(address _token, bool _accept) external onlyOwner override {
         require (_token != address(0), "zero address");
-        require (
-            (_accept && !allowedTokens.contains(_token)) ||
-            (!_accept && allowedTokens.contains(_token)),
-            "Already set"
-        );
-
-        if (_accept) { allowedTokens.add(_token); }
-        else { allowedTokens.remove(_token); }
-        
+        collectionManager.setAcceptableERC20(_token, _accept);
         emit AcceptableERC20Set(_token, _accept);
     }
 
     /// @inheritdoc IDeckMaster
     function getAllowedTokens() external view override returns (address[] memory) {
-        return allowedTokens.values();
+        return collectionManager.getAllowedTokens();
     }
 
     /// @inheritdoc IDeckMaster
     function getAllowedCollections() external view override returns (address[] memory) {
-        return allowedCollections.values();
+        return collectionManager.getAllowedCollections();
     }
 
     /// @inheritdoc IDeckMaster
     function getAllowedBundles() external view override returns (address[] memory) {
-        return allowedBundles.values();
+        return collectionManager.getAllowedBundles();
     }
 
     /// @inheritdoc IDeckMaster
     function setAcceptableCollections(address[] memory _collections, bool _accept) external onlyOwner override {
-        uint256 length = _collections.length;
-        require (length > 0, "invalid collection length");
-        
-        for (uint256 i = 0; i < length; i ++) {
-            address collection = _collections[i];
-            require (collection != address(0), "zero collection address");
-            require (
-                (_accept && !allowedCollections.contains(collection)) ||
-                (!_accept && allowedCollections.contains(collection)),
-                "Already set"
-            );
-            if (_accept) { allowedCollections.add(collection); }
-            else { allowedCollections.remove(collection); }
-        }
+        collectionManager.setAcceptableCollections(_collections, _accept);
         emit AcceptableCollectionsSet(_collections, _accept);
     }
 
     /// @inheritdoc IDeckMaster
     function setAcceptableBundle(address _bundle, bool _accept) external onlyOwner override {
         require (_bundle != address(0), "zero address");
-        require (
-            (_accept && !allowedBundles.contains(_bundle)) ||
-            (!_accept && allowedBundles.contains(_bundle)),
-            "Already set"
-        );
-        if (_accept) { allowedBundles.add(_bundle); }
-        else { allowedBundles.remove(_bundle); }
+        collectionManager.setAcceptableBundle(_bundle, _accept);
         emit AcceptableBundleSet(_bundle, _accept);
     }
 
@@ -134,11 +113,7 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
         address _collectionAddress
     ) external onlyOwner override {
         require (_serviceFeeId != 0 && _serviceFeeId < serviceFeeId, "invalid serviceFeeId");
-        require (
-            _collectionAddress != address(0) && 
-            (allowedCollections.contains(_collectionAddress) || allowedBundles.contains(_collectionAddress)), 
-            "not acceptable collection address"
-        );
+        collectionManager.checkAllowedCollection(_collectionAddress);
         require (linkServiceFees[_collectionAddress] == 0, "already linked to a fee");
         linkServiceFees[_collectionAddress] = _serviceFeeId;
         emit ServiceFeeLinked(_serviceFeeId, _collectionAddress);
@@ -149,12 +124,7 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
         address _collectionAddress,
         uint256 _depositLimit
     ) external onlyOwner override {
-        require (
-            _collectionAddress != address(0) && 
-            (allowedCollections.contains(_collectionAddress) || allowedBundles.contains(_collectionAddress)),
-            "invalid collection address"
-        );
-        depositLimitations[_collectionAddress] = _depositLimit;
+        collectionManager.setDepositFlag(_collectionAddress, _depositLimit);
         emit DepositFlagSet(_collectionAddress, _depositLimit);
     }
 
@@ -168,19 +138,14 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
         require (sender != address(0), "zero caller address");
         require (length > 0, "dismatched length");
 
-        DeckLPInfo storage deckLpInfo = deckLpInfos[deckLpId];
-        require (allowedCollections.contains(_collectionAddress), "Not acceptable collection address");
-        require (depositLimitations[_collectionAddress] >= length, "exceeds to max deposit limit");
-            depositLimitations[_collectionAddress] -= length;
+        collectionManager.checkCollectionAvailableForDeposit(_collectionAddress, _tokenIds);
 
         for (uint256 i = 0; i < length; i ++) {
             uint256 tokenId = _tokenIds[i];
             require (IERC721(_collectionAddress).ownerOf(tokenId) == sender, "not Collection owner");
-            
-            deckLpInfo.collectionAddresses.push(_collectionAddress);
-            deckLpInfo.tokenIds.push(tokenId);
             IERC721(_collectionAddress).transferFrom(sender, address(this), tokenId);
         }
+        serviceManager.addDepositedCollections(deckLpId, _collectionAddress, _tokenIds);
         
         emit CollectionsDeposited(_collectionAddress, _tokenIds, deckLpId);
         _mintDeckLp(sender);
@@ -190,17 +155,10 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
     function depositBundle(address _bundleAddress, uint256 _tokenId) external override {
         address sender = msg.sender;
         require (sender != address(0), "zero caller address");
-        require (allowedBundles.contains(_bundleAddress), "Not acceptable bundle address");
         require (IERC721(_bundleAddress).ownerOf(_tokenId) == sender, "not Collection owner");
-        require (depositLimitations[_bundleAddress] > 0, "exceeds to max deposit limit");
-
-        (,,address[] memory collections,) = BundlesInterface(_bundleAddress).getBundle(_tokenId);
-        require (collections.length == collectionAmountForBundle, "Bundle should have certain collections");
-
-        depositLimitations[_bundleAddress] -= 1;
-        DeckLPInfo storage deckLpInfo = deckLpInfos[deckLpId];
-        deckLpInfo.collectionAddresses.push(_bundleAddress);
-        deckLpInfo.tokenIds.push(_tokenId);
+        collectionManager.checkBundleAvailableForDeposit(_bundleAddress, _tokenId);
+        
+        serviceManager.addDepositedBundle(deckLpId, _bundleAddress, _tokenId);
         IERC721(_bundleAddress).transferFrom(sender, address(this), _tokenId);
         
         emit BundleDeposited(_bundleAddress, _tokenId, deckLpId);
@@ -212,19 +170,19 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
         uint256 _deckLpId
     ) external override {
         address sender = msg.sender;
-        DeckLPInfo storage deck = deckLpInfos[_deckLpId];
+        // DeckLPInfo storage deck = deckLpInfos[_deckLpId];
         require (sender != address(0), "zero caller addres");
         require (_exists(_deckLpId) && ownerOf(_deckLpId) == sender, "not deckLp owner");
-        require (!deck.lendDeckLp, "receipt deckLp");
-        require (!deck.listedLend && !deck.lend, "related to lend");
+        (
+            address[] memory collectionAddresses,
+            uint256[] memory tokenIds
+        ) = serviceManager.removeWithdrawedCollections(_deckLpId);
         
-        for (uint256 i = 0; i < deck.collectionAddresses.length; i ++) {
-            address collectionAddress = deck.collectionAddresses[i];
-            uint256 tokenId = deck.tokenIds[i];
+        for (uint256 i = 0; i < collectionAddresses.length; i ++) {
+            address collectionAddress = collectionAddresses[i];
+            uint256 tokenId = tokenIds[i];
             IERC721(collectionAddress).transferFrom(address(this), sender, tokenId);
         }
-        delete deck.collectionAddresses;
-        delete deck.tokenIds;
         
         _burn(_deckLpId);
         emit Withdraw(sender, _deckLpId);
@@ -243,26 +201,18 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
         address sender = msg.sender;
         require (sender != address(0), "zero caller address");
         require (_duration > 0, "invalid lend duration");
-        require (_exists(_deckLpId) && ownerOf(_deckLpId) == sender && !deckLpInfos[_deckLpId].lend, "not deckLp owner");
-        require (
-            !deckLpInfos[_deckLpId].lendDeckLp &&
-            !deckLpInfos[_deckLpId].listedLend && 
-            !deckLpInfos[_deckLpId].lend,
-            "already listed or lent"
-        );
+        require (_exists(_deckLpId) && ownerOf(_deckLpId) == sender, "not deckLp owner");
         require ((!_prepay && _prepayAmount == 0) || (_prepay && _prepayAmount > 0), "invalid prepay amount");
         require (_winDist.borrowerRate + _winDist.lenderRate + _winDist.burnRate == BASE_POINT, "invalid winning distribution");
 
-        deckLpInfos[_deckLpId].listedLend = true;
-        lendInfos[_deckLpId] = LendInfo(
+        serviceManager.listDeckLpLend(
+            _deckLpId,
             sender, 
-            address(0), 
             _paymentToken, 
             _dailyInterest, 
             _prepayAmount, 
-            0, 
             _duration, 
-            _winDist,
+            _winDist, 
             _prepay
         );
         emit Lend(sender, _deckLpId);
@@ -273,23 +223,13 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
         uint256 _deckLpId
     ) external override {
         address sender = msg.sender;
-        DeckLPInfo storage deckLpInfo = deckLpInfos[_deckLpId];
-        LendInfo storage lendInfo = lendInfos[_deckLpId];
         require (sender != address(0), "zero caller address");
-        require (!deckLpInfo.lendDeckLp, "This is receipt deckLp");
         require (_exists(_deckLpId) && ownerOf(_deckLpId) != sender, "deckLp owner");
-        require (deckLpInfo.listedLend && !deckLpInfo.lend, "not listed");
 
         _takeServiceFee(_deckLpId);
         _takeLendOffer(_deckLpId);
 
-        deckLpInfo.listedLend = false;
-        deckLpInfo.lend = true;
-        lendInfo.borrower = sender;
-        lendInfo.borrowedTimestamp = block.timestamp;
-
-        deckLpInfos[deckLpId].lendDeckLp = true;
-        deckLpInfos[deckLpId].borrowedDeckLpId = _deckLpId;
+        serviceManager.borrowDeckLp(sender, block.timestamp, _deckLpId, deckLpId);
 
         emit Borrow(sender, deckLpId);
         _mintDeckLp(sender);
@@ -301,18 +241,24 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
         uint256 _totalWinnings,
         uint256[] memory _gameIds
     ) external onlyOwner override {
-        require (!deckLpInfos[_deckLpId].lendDeckLp, "this deckLp is receipt deckLp");
-        if (!deckLpInfos[_deckLpId].lend) {
+        (
+            address lender,
+            address borrower,
+            WinningDistribution memory winDist,
+            bool isLendDeckLp,
+            bool isLend
+        ) = serviceManager.getDeckLendInfo(_deckLpId);
+
+        require (!isLendDeckLp, "this deckLp is receipt deckLp");
+        if (!isLend) {
             address deckOwner = ownerOf(_deckLpId);
             claimableAmount[deckOwner][_deckLpId] += _totalWinnings;
         } else {
-            LendInfo memory lendInfo = lendInfos[_deckLpId];
-            WinningDistribution memory winDist = lendInfo.winDistributionRate;
             uint256 lenderAmount = _totalWinnings * winDist.lenderRate / BASE_POINT;
             uint256 borrowerAmount = _totalWinnings * winDist.borrowerRate / BASE_POINT;
             uint256 burnRate = _totalWinnings - lenderAmount - borrowerAmount;
-            claimableAmount[lendInfo.lender][_deckLpId] += lenderAmount;
-            claimableAmount[lendInfo.borrower][_deckLpId] += borrowerAmount;
+            claimableAmount[lender][_deckLpId] += lenderAmount;
+            claimableAmount[borrower][_deckLpId] += borrowerAmount;
             IERC20(baseToken).safeTransfer(DEAD, burnRate);
         }
 
@@ -322,7 +268,7 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
     /// @inheritdoc IDeckMaster
     function claimWinnings(uint256 _deckLpId) external override {
         address sender = msg.sender;
-        require (!deckLpInfos[_deckLpId].lendDeckLp, "this deckLp is receipt deckLp");
+        require (!serviceManager.isLendDeckLp(_deckLpId), "this deckLp is receipt deckLp");
         require (claimableAmount[sender][_deckLpId] > 0, "no claimable winning rewards");
         claimableAmount[sender][_deckLpId] = 0;
         IERC20(baseToken).safeTransfer(sender, claimableAmount[sender][_deckLpId]);
@@ -332,16 +278,13 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
     /// @inheritdoc IDeckMaster
     function claimInterest(uint256 _deckLpId) external override {
         address sender = msg.sender;
-        DeckLPInfo storage deckLpInfo = deckLpInfos[_deckLpId];
-        require (!deckLpInfo.lendDeckLp, "this deckLp is receipt deckLp");
-        require (deckLpInfo.lend, "this deck is not lent deckLp");
-        LendInfo memory lendInfo = lendInfos[_deckLpId];
-        require (lendInfo.lender == sender, "not lender");
-        require (block.timestamp > lendInfo.borrowedTimestamp + lendInfo.borrowDuration, "can not claim interest in lend duration");
-        uint256 interestAmount = lendInfo.dailyInterest * (lendInfo.borrowDuration);
-        lockedTokenAmount[lendInfo.paymentToken] -= interestAmount;
-        deckLpInfo.lend = deckLpInfo.listedLend = false;
-        IERC20(lendInfo.paymentToken).safeTransfer(sender, interestAmount);
+        (
+            uint256 interestAmount,
+            address paymentToken
+        ) = serviceManager.checkDeckLpAvailableForClaimInterest(sender, _deckLpId);
+
+        lockedTokenAmount[paymentToken] -= interestAmount;
+        IERC20(paymentToken).safeTransfer(sender, interestAmount);
         _burn(_deckLpId);
 
         emit InterestClaimed(sender, interestAmount);
@@ -373,10 +316,7 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
         WinningDistribution memory winDistribution
     ) {
         require (_exists(_deckLpId), "not exist deckLp id");
-        DeckLPInfo memory deckLpInfo = deckLpInfos[_deckLpId];
-        require (deckLpInfo.lendDeckLp, "this deckLp is not receipt deckLp");
-        LendInfo memory lendInfo = lendInfos[deckLpInfo.borrowedDeckLpId];
-        return (lendInfo.borrowDuration, lendInfo.prepayAmount, lendInfo.dailyInterest, lendInfo.winDistributionRate);
+        return serviceManager.getReceiptDeckLpInfo(_deckLpId);
     }
 
     /// @inheritdoc IDeckMaster
@@ -384,9 +324,7 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
         uint256 _deckLpId
     ) external view override returns (address collectionAddress, uint256[] memory tokenIds) {
         require (_exists(_deckLpId), "not exist deckLp id");
-        DeckLPInfo memory deckLpInfo = deckLpInfos[_deckLpId];
-        require (!deckLpInfo.lendDeckLp, "this deckLp is receipt deckLp");
-        return (deckLpInfo.collectionAddresses[0], deckLpInfo.tokenIds);
+        return serviceManager.getDeckLpInfo(_deckLpId);
     }
 
     /// @inheritdoc IDeckMaster
@@ -396,12 +334,12 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
 
     /// @inheritdoc IDeckMaster
     function getCollectionAddress() external view override returns (address[] memory) {
-        return allowedCollections.values();
+        return collectionManager.getCollectionAddress();
     }
 
     /// @inheritdoc IDeckMaster
     function getBundlesAddress() external view override returns (address[] memory) {
-        return allowedBundles.values();
+        return collectionManager.getBundlesAddress();
     }
 
     /// @inheritdoc IDeckMaster
@@ -419,8 +357,7 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
     }
 
     function _getServiceFeeId(uint256 _deckLpId) internal view returns (uint256) {
-        DeckLPInfo memory deckLpInfo = deckLpInfos[_deckLpId];
-        address collectionAddress = deckLpInfo.collectionAddresses[0];
+        (address collectionAddress, ) = serviceManager.getDeckLpInfo(_deckLpId);
         return linkServiceFees[collectionAddress];
     }
 
@@ -446,7 +383,8 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
 
     function _takeLendOffer(uint256 _deckLpId) internal {
         address sender = msg.sender;
-        LendInfo memory lendInfo = lendInfos[_deckLpId];
+        
+        LendInfo memory lendInfo = serviceManager.getLendInfo(_deckLpId);
         IERC20 paymentToken = IERC20(lendInfo.paymentToken);
         if (lendInfo.prepay) {
             uint256 prepayAmount = lendInfo.prepayAmount;
