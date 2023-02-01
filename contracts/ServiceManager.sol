@@ -21,7 +21,7 @@ contract ServiceManager is Ownable, IServiceManager {
 
     constructor () {}
 
-    function setDeckMaster(address _deckMaster) external onlyOwner {
+    function setDeckMaster(address _deckMaster) external override onlyOwner {
         require (_deckMaster != address(0), "zero deck master address");
         deckMaster = _deckMaster;
     }
@@ -30,7 +30,7 @@ contract ServiceManager is Ownable, IServiceManager {
         uint256 _deckLpId,
         address _collectionAddress, 
         uint256[] memory _tokenIds
-    ) external {
+    ) external override onlyDeckMaster {
         DeckLPInfo storage deckLpInfo = deckLpInfos[_deckLpId];
         uint256 length = _tokenIds.length;
         for (uint256 i = 0; i < length; i ++) {
@@ -39,13 +39,19 @@ contract ServiceManager is Ownable, IServiceManager {
         }
     }
 
-    function addDepositedBundle(uint256 _deckLpId, address _bundleAddress, uint256 _tokenId) external {
+    function addDepositedBundle(
+        uint256 _deckLpId, 
+        address _bundleAddress, 
+        uint256 _tokenId
+    ) external override onlyDeckMaster {
         DeckLPInfo storage deckLpInfo = deckLpInfos[_deckLpId];
         deckLpInfo.collectionAddresses.push(_bundleAddress);
         deckLpInfo.tokenIds.push(_tokenId);
     }
 
-    function removeWithdrawedCollections(uint256 _deckLpId) external returns (
+    function removeWithdrawedCollections(
+        uint256 _deckLpId
+    ) external override onlyDeckMaster returns (
         address[] memory collectionAddresses, 
         uint256[] memory tokenIds
     ) {
@@ -68,7 +74,7 @@ contract ServiceManager is Ownable, IServiceManager {
         uint256 _duration,
         WinningDistribution memory _winDist,
         bool _prepay
-    ) external {
+    ) external override onlyDeckMaster {
         require (
             !deckLpInfos[_deckLpId].lendDeckLp &&
             !deckLpInfos[_deckLpId].listedLend && 
@@ -90,7 +96,12 @@ contract ServiceManager is Ownable, IServiceManager {
         );
     }
 
-    function borrowDeckLp(address _borrower, uint256 _borrowTimestamp, uint256 _borrowedDeckLpId, uint256 _mintDeckLpId) external {
+    function borrowDeckLp(
+        address _borrower, 
+        uint256 _borrowTimestamp, 
+        uint256 _borrowedDeckLpId, 
+        uint256 _mintDeckLpId
+    ) external override onlyDeckMaster {
         DeckLPInfo storage deckLpInfo = deckLpInfos[_borrowedDeckLpId];
         LendInfo storage lendInfo = lendInfos[_borrowedDeckLpId];
         require (!deckLpInfo.lendDeckLp, "This is receipt deckLp");
@@ -108,7 +119,10 @@ contract ServiceManager is Ownable, IServiceManager {
     function checkDeckLpAvailableForClaimInterest(
         address _user, 
         uint256 _deckLpId
-    ) external returns (uint256 interestAmount, address paymentToken) {
+    ) external override onlyDeckMaster returns (
+        uint256 interestAmount, 
+        address paymentToken
+    ) {
         DeckLPInfo storage deckLpInfo = deckLpInfos[_deckLpId];
         require (!deckLpInfo.lendDeckLp, "this deckLp is receipt deckLp");
         require (deckLpInfo.lend, "this deck is not lent deckLp");
@@ -156,7 +170,10 @@ contract ServiceManager is Ownable, IServiceManager {
 
     function getDeckLpInfo(
         uint256 _deckLpId
-    ) external view returns (address collectionAddress, uint256[] memory tokenIds) {
+    ) external view returns (
+        address collectionAddress, 
+        uint256[] memory tokenIds
+    ) {
         DeckLPInfo memory deckLpInfo = deckLpInfos[_deckLpId];
         require (!deckLpInfo.lendDeckLp, "this deckLp is receipt deckLp");
         return (deckLpInfo.collectionAddresses[0], deckLpInfo.tokenIds);

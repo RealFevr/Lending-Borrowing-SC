@@ -26,18 +26,23 @@ contract CollectionManager is Ownable, ICollectionManager {
     constructor () {}
 
     /// @inheritdoc ICollectionManager
-    function setDeckMaster(address _deckMaster) external onlyOwner {
+    function setDeckMaster(address _deckMaster) external override onlyOwner {
         require (_deckMaster != address(0), "zero deck master address");
         deckMaster = _deckMaster;
     }
 
     /// @inheritdoc ICollectionManager
-    function setCollectionAmountForBundle(uint256 _amount) external onlyDeckMaster {
+    function setCollectionAmountForBundle(
+        uint256 _amount
+    ) external override onlyDeckMaster {
         collectionAmountForBundle = _amount;
     }
 
     /// @inheritdoc ICollectionManager
-    function setAcceptableERC20(address _token, bool _accept) external {
+    function setAcceptableERC20(
+        address _token, 
+        bool _accept
+    ) external override onlyDeckMaster {
         require (
             (_accept && !allowedTokens.contains(_token)) ||
             (!_accept && allowedTokens.contains(_token)),
@@ -49,7 +54,10 @@ contract CollectionManager is Ownable, ICollectionManager {
     }
 
     /// @inheritdoc ICollectionManager
-    function setAcceptableCollections(address[] memory _collections, bool _accept) external {
+    function setAcceptableCollections(
+        address[] memory _collections, 
+        bool _accept
+    ) external override onlyDeckMaster {
         uint256 length = _collections.length;
         require (length > 0, "invalid collection length");
         
@@ -67,7 +75,10 @@ contract CollectionManager is Ownable, ICollectionManager {
     }
 
     /// @inheritdoc ICollectionManager
-    function setAcceptableBundle(address _bundle, bool _accept) external {
+    function setAcceptableBundle(
+        address _bundle, 
+        bool _accept
+    ) external override onlyDeckMaster {
         require (
             (_accept && !allowedBundles.contains(_bundle)) ||
             (!_accept && allowedBundles.contains(_bundle)),
@@ -78,7 +89,10 @@ contract CollectionManager is Ownable, ICollectionManager {
     }
 
     /// @inheritdoc ICollectionManager
-    function setDepositFlag(address _collectionAddress, uint256 _depositLimit) external {
+    function setDepositFlag(
+        address _collectionAddress, 
+        uint256 _depositLimit
+    ) external override onlyDeckMaster {
          require (
             _collectionAddress != address(0) && 
             (allowedCollections.contains(_collectionAddress) || allowedBundles.contains(_collectionAddress)),
@@ -102,7 +116,10 @@ contract CollectionManager is Ownable, ICollectionManager {
     }
 
     /// @inheritdoc ICollectionManager
-    function checkCollectionAvailableForDeposit(address _collectionAddress, uint256[] memory _tokenIds) external {
+    function checkCollectionAvailableForDeposit(
+        address _collectionAddress, 
+        uint256[] memory _tokenIds
+    ) external override onlyDeckMaster {
         uint256 length = _tokenIds.length;
         require (allowedCollections.contains(_collectionAddress), "Not acceptable collection address");
         require (depositLimitations[_collectionAddress] >= length, "exceeds to max deposit limit");
@@ -110,7 +127,10 @@ contract CollectionManager is Ownable, ICollectionManager {
     }
 
     /// @inheritdoc ICollectionManager
-    function checkBundleAvailableForDeposit(address _bundleAddress, uint256 _tokenId) external {
+    function checkBundleAvailableForDeposit(
+        address _bundleAddress, 
+        uint256 _tokenId
+    ) external override onlyDeckMaster {
         require (allowedBundles.contains(_bundleAddress), "Not acceptable bundle address");
         require (depositLimitations[_bundleAddress] > 0, "exceeds to max deposit limit");
 
