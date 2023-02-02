@@ -12,23 +12,49 @@ import "./interfaces/IDeckMaster.sol";
 import "./interfaces/ICollectionManager.sol";
 import "./interfaces/IServiceManager.sol";
 import "./interfaces/BundlesInterface.sol";
+import "./interfaces/IUniswapRouter02.sol";
 
 contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
     
+    /// The information of ServiceFee by serviceFeeId.
     mapping(uint256 => ServiceFee) private serviceFees;
+
+    /// @dev ServiceFee for accepted collection.
     mapping(address => uint256) private linkServiceFees;
     
+    /// @dev Locked token amount for certain token.
     mapping(address => uint256) private lockedTokenAmount;
+
+    /// @dev The fee infomation for buyback.
     mapping(address => BuyBackFee) private buybackFees;
+
+    /// @dev The claimable $Fevr token amount comes from winning games.
     mapping(address => mapping(uint256 => uint256)) public claimableAmount;
 
+    /// The address of collectionManager contract.
     ICollectionManager public collectionManager;
+
+    /// @dev The address of serviceManager contract.
     IServiceManager public serviceManager;
+
+    /// @dev The address to burn tokens.
     address constant DEAD = 0x000000000000000000000000000000000000dEaD;
+
+    /// @dev The address of $Fevr token.
     address public baseToken;
+
+    /// @dev The address of uniswap router.
+    address public dexRouter;
+
+    /// @dev total DeckLP count that exist.
+    uint256 private totalDeckLPCnt;
+
+    /// @dev The id of ServiceFee.
     uint256 private serviceFeeId;
+
+    /// @dev The id of deckLpId. deckLpId = tokenId.
     uint256 private deckLpId;
     
 
@@ -42,10 +68,14 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
     constructor (
         address _baseToken,
         address _collectionManager,
-        address _serviceManager
+        address _serviceManager,
+        address _dexRouter
     ) ERC721("DeckLp", "DeckLP") {
         require (_baseToken != address(0), "zero base token address");
         require (_collectionManager != address(0), "zero collection manager address");
+        require (_dexRouter != address(0), "zero dex router address");
+
+        dexRouter = _dexRouter;
         collectionManager = ICollectionManager(_collectionManager);
         serviceManager = IServiceManager(_serviceManager);
         baseToken = _baseToken;
@@ -184,7 +214,7 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
             IERC721(collectionAddress).transferFrom(address(this), sender, tokenId);
         }
         
-        _burn(_deckLpId);
+        _burn(_deckLpId); totalDeckLPCnt --;
         emit Withdraw(sender, _deckLpId);
     }
 
@@ -285,7 +315,7 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
 
         lockedTokenAmount[paymentToken] -= interestAmount;
         IERC20(paymentToken).safeTransfer(sender, interestAmount);
-        _burn(_deckLpId);
+        _burn(_deckLpId); totalDeckLPCnt --;
 
         emit InterestClaimed(sender, interestAmount);
     }
@@ -353,6 +383,7 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
     }
 
     function _mintDeckLp(address _recipient) internal {
+        totalDeckLPCnt ++;
         _safeMint(_recipient, deckLpId ++);
     }
 
@@ -377,8 +408,33 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
             uint256 burnAmount = feeAmount * serviceFee.burnPercent / BASE_POINT;
             paymentToken.safeTransfer(DEAD, burnAmount);
 
-            // TODO buyback
+            _buyBack(address(paymentToken), feeAmount - burnAmount);
         }
+    }
+
+    function _buyBack(address _token, uint256 _amount) internal {
+        if (!buybackFees[_token].active || _amount == 0) return;
+        
+        address[] memory path = new address[](2);
+        path[0] = _token;
+        path[1] = baseToken;
+
+        uint256 beforeBal = IERC20(baseToken).balanceOf(address(this));
+        IUniswapV2Router02(dexRouter).swapExactTokensForTokensSupportingFeeOnTransferTokens(
+            _amount, 
+            0, 
+            path, 
+            address(this), 
+            block.timestamp
+        );
+        uint256 afterBal = IERC20(baseToken).balanceOf(address(this));
+        uint256 swappedAmount = afterBal - beforeBal;
+
+        uint16 feeRate = buybackFees[_token].feeRate;
+        uint256 feeAmount = swappedAmount * feeRate / BASE_POINT;
+        uint256 burnAmount = swappedAmount - feeAmount;
+        if (burnAmount == 0) return;
+        IERC20(baseToken).safeTransfer(DEAD, burnAmount);
     }
 
     function _takeLendOffer(uint256 _deckLpId) internal {
