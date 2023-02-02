@@ -7,16 +7,13 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "./interfaces/IDeckMaster.sol";
 import "./interfaces/ICollectionManager.sol";
 import "./interfaces/IServiceManager.sol";
-import "./interfaces/BundlesInterface.sol";
 import "./interfaces/IUniswapRouter02.sol";
 
 contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
     using SafeERC20 for IERC20;
-    using EnumerableSet for EnumerableSet.AddressSet;
     
     /// The information of ServiceFee by serviceFeeId.
     mapping(uint256 => ServiceFee) private serviceFees;
@@ -87,11 +84,12 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
     function setCollectionAmountForBundle(uint256 _amount) external onlyOwner override {
         require (_amount > 0, "invalid amount");
         collectionManager.setCollectionAmountForBundle(_amount);
+        emit CollectionAmountForBundleSet(_amount);
     }
     
     /// @inheritdoc IDeckMaster
     function setAcceptableERC20(address _token, bool _accept) external onlyOwner override {
-        require (_token != address(0), "zero address");
+        require (_token != address(0), "zero token address");
         collectionManager.setAcceptableERC20(_token, _accept);
         emit AcceptableERC20Set(_token, _accept);
     }

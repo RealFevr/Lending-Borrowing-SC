@@ -200,6 +200,8 @@ interface IDeckMaster is IDeckStructure {
 
     event DepositFlagSet(address indexed collectionAddress, uint256 depositLimit);
 
+    event CollectionAmountForBundleSet(uint256 amount);
+
     event CollectionsDeposited(address indexed collectionAddress, uint256[] tokenIds, uint256 deckLpId);
 
     event BundleDeposited(address indexed bundleCollection, uint256 tokenId, uint256 deckLpId);
