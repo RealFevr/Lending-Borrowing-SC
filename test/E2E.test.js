@@ -206,4 +206,156 @@ describe ("Lending-Borrowing Protocol test", function () {
             .withArgs(50);
         })
     })
+
+    describe ("set service and linke it to collection", function () {
+
+    })
+
+    describe ("deposit collections and bundles", function () {
+        it ("deposit collections or bundles without setting deposit flag", async function () {
+
+        })
+
+        describe ("deposit collections", function () {
+            it ("deposit collections after set deposit flag and check deckLp", async function () {
+
+            })
+        })
+        
+        describe ("deposit bundle", function () {
+            it ("reverts if bundle doesn't have certain collection amount", async function () {
+
+            })
+
+            it ("deposit bundle with certain collection amount and check deckLp", async function () {
+
+            })
+        })        
+    })  
+
+    describe ("withdraw collections and bundles", function () {
+        describe ("withdraw collections", function () {
+            it ("reverts if caller is not the deckLp owner", async function () {
+
+            })
+
+            it ("withdraw collections with deckLp and check deckLp is burn", async function () {
+
+            })
+        })
+
+        describe ("withdraw bundle", function () {
+            it ("reverts if caller is not the deckLp owner", async function () {
+
+            })
+
+            it ("withdraw bundle with deckLp and check deckLp is burn", async function () {
+
+            })
+        })
+    })
+
+    describe ("lend and borrow collections", function () {
+        describe ("deposit collections and bundles for lending", function () {
+            it ("deposit collections", async function () {
+
+            })
+
+            it ("deposit bundle", async function () {
+
+            })
+        })
+
+        describe ("list lend with deckLp", function () {
+            it ("reverts if caller is not the deckLp owner", async function () {
+
+            })
+
+            it ("reverts if try to lend with invalid prepay information", async function () {
+
+            })
+
+            it ("reverts if winning distribution is over 100%", async function () {
+
+            })
+
+            it ("list lend with deckLpId and check lend infos", async function () {
+                
+            })
+        })
+
+        describe ("borrow", function () {
+            it ("reverts if try to borrow not exist deckLp", async function () {
+
+            })
+
+            it ("reverts if deckLp is not listed for lend", async function () {
+
+            })
+
+            it ("reverts if borrower doesn't have enough balance for service fee", async function () {
+
+            })
+
+            describe ("buyback", function () {
+                it ("brrow without buyback fee and check receipt deckLp, serviceFee and offerLend", async function () {
+
+                })
+
+                it ("brrow with buyback fee and check receipt deckLp, serviceFee and offerLend", async function () {
+
+                })
+            })
+        })
+
+        describe ("winning distribution", function () {
+            it ("reverts if caller is not the owner", async function () {
+                
+            })
+
+            it ("reverts if deckLp is receipt deckLp", async function () {
+
+            })
+
+            it ("set winningCalculation and check burn token and claimable token amount", async function () {
+
+            })
+
+            describe ("claim winning rewards", function () {
+                it ("reverts if caller is not the owner or lender", async function () {
+
+                })
+
+                it ("claim winning rewards and check balance", async function () {
+
+                })
+
+                it ("reverts if no claimable rewards", async function () {
+
+                })
+            })
+        })
+
+        describe ("claim interests", function () {
+            it ("reverts if try to claim with receipt deckLp id", async function () {
+
+            })
+
+            it ("reverts if deckLpId is not lent deckLpId", async function () {
+
+            })
+
+            it ("reverts if caller is not the lender", async function () {
+
+            })
+
+            it ("claim interests and check receipt deckLp is burn", async function () {
+                
+            })
+
+            it ("reverts if try to claim rewards before maturity", async function () {
+
+            })
+        })
+    })
 })

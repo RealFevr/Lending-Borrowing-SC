@@ -116,6 +116,7 @@ interface IDeckMaster is IDeckStructure {
     ) external;
 
     /// @notice Let lender & borrower claim he winnings related to a deckLp.
+    /// @dev Only borrower and lender can call this function.
     /// @param _deckLpId The token id of deckLp.
     function claimWinnings(uint256 _deckLpId) external;
 

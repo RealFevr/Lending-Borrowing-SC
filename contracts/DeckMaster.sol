@@ -252,7 +252,7 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
     ) external override {
         address sender = msg.sender;
         require (sender != address(0), "zero caller address");
-        require (_exists(_deckLpId) && ownerOf(_deckLpId) != sender, "deckLp owner");
+        require (_exists(_deckLpId), "not exists deckLp id");
 
         _takeServiceFee(_deckLpId);
         _takeLendOffer(_deckLpId);
@@ -297,6 +297,11 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
     function claimWinnings(uint256 _deckLpId) external override {
         address sender = msg.sender;
         require (!serviceManager.isLendDeckLp(_deckLpId), "this deckLp is receipt deckLp");
+        (
+            address lender,
+            address borrower, , ,
+        ) = serviceManager.getDeckLendInfo(_deckLpId);
+        require (sender == lender || sender == borrower, "caller is not lender or borrower");
         require (claimableAmount[sender][_deckLpId] > 0, "no claimable winning rewards");
         claimableAmount[sender][_deckLpId] = 0;
         IERC20(baseToken).safeTransfer(sender, claimableAmount[sender][_deckLpId]);
