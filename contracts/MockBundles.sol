@@ -41,7 +41,7 @@ contract MockBundles is ERC721, Ownable, BundlesInterface {
             nftAddresses, 
             ids
         );
-        _mint(msg.sender, bundleLpIdCounter);
+        _mint(msg.sender, bundleLpIdCounter ++);
     }
 
    

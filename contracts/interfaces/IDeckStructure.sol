@@ -25,6 +25,7 @@ interface IDeckStructure {
         address[] collectionAddresses;
         uint256[] tokenIds;
         /// @dev If this deckLp is receipt deckLp, `borrowedDeckLpId` shows borrowed deckLpId.
+        /// @dev If this deckLp isn't receipt deckLp, `borrowedDeckLpId` shows receipt deckLpId.
         uint256 borrowedDeckLpId;
         bool listedLend;
         bool lend;

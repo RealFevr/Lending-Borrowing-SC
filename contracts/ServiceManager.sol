@@ -105,10 +105,10 @@ contract ServiceManager is Ownable, IServiceManager {
         DeckLPInfo storage deckLpInfo = deckLpInfos[_borrowedDeckLpId];
         LendInfo storage lendInfo = lendInfos[_borrowedDeckLpId];
         require (!deckLpInfo.lendDeckLp, "This is receipt deckLp");
-        require (deckLpInfo.listedLend && !deckLpInfo.lend, "not listed");
 
         deckLpInfo.listedLend = false;
         deckLpInfo.lend = true;
+        deckLpInfo.borrowedDeckLpId = _mintDeckLpId;
         lendInfo.borrower = _borrower;
         lendInfo.borrowedTimestamp = _borrowTimestamp;
 
@@ -121,6 +121,7 @@ contract ServiceManager is Ownable, IServiceManager {
         uint256 _deckLpId
     ) external override onlyDeckMaster returns (
         uint256 interestAmount, 
+        uint256 receiptDeckLpId,
         address paymentToken
     ) {
         DeckLPInfo storage deckLpInfo = deckLpInfos[_deckLpId];
@@ -129,9 +130,10 @@ contract ServiceManager is Ownable, IServiceManager {
         LendInfo memory lendInfo = lendInfos[_deckLpId];
         require (lendInfo.lender == _user, "not lender");
         require (block.timestamp > lendInfo.borrowedTimestamp + lendInfo.borrowDuration, "can not claim interest in lend duration");
-        interestAmount = lendInfo.dailyInterest * (lendInfo.borrowDuration);
+        interestAmount = lendInfo.dailyInterest * (lendInfo.borrowDuration) / 1 days;
         deckLpInfo.lend = deckLpInfo.listedLend = false;
         paymentToken = lendInfo.paymentToken;
+        receiptDeckLpId = deckLpInfo.borrowedDeckLpId;
     }
 
     function getDeckLendInfo(uint256 _deckLpId) external view returns (
@@ -154,7 +156,10 @@ contract ServiceManager is Ownable, IServiceManager {
     }
 
     function getReceiptDeckLpInfo(uint256 _deckLpId) external view returns (
+        address lender,
+        address borrower,
         uint256 duration, 
+        uint256 borrowTimestamp,
         uint256 prepay, 
         uint256 interest, 
         WinningDistribution memory winDistribution
@@ -162,7 +167,10 @@ contract ServiceManager is Ownable, IServiceManager {
         DeckLPInfo memory deckLpInfo = deckLpInfos[_deckLpId];
         require (deckLpInfo.lendDeckLp, "this deckLp is not receipt deckLp");
         LendInfo memory lendInfo = lendInfos[deckLpInfo.borrowedDeckLpId];
+        lender = lendInfo.lender;
+        borrower = lendInfo.borrower;
         duration = lendInfo.borrowDuration;
+        borrowTimestamp = lendInfo.borrowedTimestamp;
         prepay= lendInfo.prepayAmount;
         interest = lendInfo.dailyInterest;
         winDistribution = lendInfo.winDistributionRate;

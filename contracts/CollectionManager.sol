@@ -13,7 +13,7 @@ contract CollectionManager is Ownable, ICollectionManager {
     EnumerableSet.AddressSet private allowedCollections;
     EnumerableSet.AddressSet private allowedBundles;
 
-    mapping(address => uint256) private depositLimitations;
+    mapping(address => uint256) public depositLimitations;
 
     address public deckMaster;
     uint256 public collectionAmountForBundle = 50;
@@ -152,16 +152,6 @@ contract CollectionManager is Ownable, ICollectionManager {
 
     /// @inheritdoc ICollectionManager
     function getAllowedBundles() external view returns (address[] memory) {
-        return allowedBundles.values();
-    }
-
-    /// @inheritdoc ICollectionManager
-    function getCollectionAddress() external view returns (address[] memory) {
-        return allowedCollections.values();
-    }
-
-    /// @inheritdoc ICollectionManager
-    function getBundlesAddress() external view returns (address[] memory) {
         return allowedBundles.values();
     }
 }

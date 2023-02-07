@@ -46,13 +46,13 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
     address public dexRouter;
 
     /// @dev total DeckLP count that exist.
-    uint256 private totalDeckLPCnt;
+    uint256 public totalDeckLPCnt;
 
     /// @dev The id of ServiceFee.
-    uint256 private serviceFeeId;
+    uint256 public serviceFeeId;
 
     /// @dev The id of deckLpId. deckLpId = tokenId.
-    uint256 private deckLpId;
+    uint256 public deckLpId;
     
 
     uint16 public BASE_POINT = 1000;
@@ -130,7 +130,6 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
         string memory _feeName,
         uint16 _burnPercent
     ) external onlyOwner onlyAllowedToken(_paymentToken) override {
-        require (_paymentToken != address(0), "zero payment token address");
         serviceFees[serviceFeeId ++] = ServiceFee(_paymentToken, _feeAmount, _feeName, _feeFlag, _burnPercent);
         emit ServiceFeeSet(_paymentToken, _feeAmount, _feeFlag, _feeName, _burnPercent);
     }
@@ -222,7 +221,7 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
         uint256 _deckLpId,
         uint256 _dailyInterest,
         uint256 _prepayAmount,
-        uint256 _duration,
+        uint16 _duration,
         bool _prepay,
         WinningDistribution memory _winDist
     ) external onlyAllowedToken(_paymentToken) override {
@@ -239,7 +238,7 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
             _paymentToken, 
             _dailyInterest, 
             _prepayAmount, 
-            _duration, 
+            _duration * 1 days, 
             _winDist, 
             _prepay
         );
@@ -253,6 +252,7 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
         address sender = msg.sender;
         require (sender != address(0), "zero caller address");
         require (_exists(_deckLpId), "not exists deckLp id");
+        require (ownerOf(_deckLpId) != sender, "caller is deckLp owner");
 
         _takeServiceFee(_deckLpId);
         _takeLendOffer(_deckLpId);
@@ -301,10 +301,11 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
             address lender,
             address borrower, , ,
         ) = serviceManager.getDeckLendInfo(_deckLpId);
+        uint256 claimAmount = claimableAmount[sender][_deckLpId];
         require (sender == lender || sender == borrower, "caller is not lender or borrower");
-        require (claimableAmount[sender][_deckLpId] > 0, "no claimable winning rewards");
+        require (claimAmount > 0, "no claimable winning rewards");
         claimableAmount[sender][_deckLpId] = 0;
-        IERC20(baseToken).safeTransfer(sender, claimableAmount[sender][_deckLpId]);
+        IERC20(baseToken).safeTransfer(sender, claimAmount);
         emit WinningRewardsClaimed(sender, _deckLpId);
     }
 
@@ -313,12 +314,13 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
         address sender = msg.sender;
         (
             uint256 interestAmount,
+            uint256 receiptDeckLpId,
             address paymentToken
         ) = serviceManager.checkDeckLpAvailableForClaimInterest(sender, _deckLpId);
 
         lockedTokenAmount[paymentToken] -= interestAmount;
         IERC20(paymentToken).safeTransfer(sender, interestAmount);
-        _burn(_deckLpId); totalDeckLPCnt --;
+        _burn(receiptDeckLpId); totalDeckLPCnt --;
 
         emit InterestClaimed(sender, interestAmount);
     }
@@ -327,7 +329,7 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
     function buybackFeeTake(
         address _token,
         bool _turningStatus
-    ) external override {
+    ) external onlyOwner override {
         buybackFees[_token].active = _turningStatus;
     }
 
@@ -335,7 +337,7 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
     function setBuybackFee(
         address _token,
         uint16 _buybackFee
-    ) external override {
+    ) external onlyOwner override {
         buybackFees[_token].feeRate = _buybackFee;
     }
 
@@ -343,7 +345,10 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
     function getReceiptDeckLpInfo(
         uint256 _deckLpId
     ) external view override returns (
+        address lender,
+        address borrower,
         uint256 duration, 
+        uint256 borrowTimestamp,
         uint256 prepay, 
         uint256 interest, 
         WinningDistribution memory winDistribution
@@ -362,17 +367,7 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
 
     /// @inheritdoc IDeckMaster
     function getAllDeckCount() external view override returns (uint256) {
-        return deckLpId - 1;
-    }
-
-    /// @inheritdoc IDeckMaster
-    function getCollectionAddress() external view override returns (address[] memory) {
-        return collectionManager.getCollectionAddress();
-    }
-
-    /// @inheritdoc IDeckMaster
-    function getBundlesAddress() external view override returns (address[] memory) {
-        return collectionManager.getBundlesAddress();
+        return totalDeckLPCnt;
     }
 
     /// @inheritdoc IDeckMaster
@@ -395,34 +390,16 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
         return linkServiceFees[collectionAddress];
     }
 
-    function _takeServiceFee(uint256 _deckLpId) internal {
-        address sender = msg.sender;
-        uint256 collectionServiceFeeId = _getServiceFeeId(_deckLpId);
-        if (collectionServiceFeeId > 0) {
-            ServiceFee memory serviceFee = serviceFees[collectionServiceFeeId];
-            IERC20 paymentToken = IERC20(serviceFee.paymentToken);
-            uint256 feeAmount = serviceFee.feeAmount;
-            require (
-                !serviceFee.active ||
-                paymentToken.balanceOf(sender) >= feeAmount, 
-                "Not enough balance for serviceFee"
-            );
-            paymentToken.safeTransferFrom(sender, address(this), feeAmount);
-            uint256 burnAmount = feeAmount * serviceFee.burnPercent / BASE_POINT;
-            paymentToken.safeTransfer(DEAD, burnAmount);
-
-            _buyBack(address(paymentToken), feeAmount - burnAmount);
-        }
-    }
-
     function _buyBack(address _token, uint256 _amount) internal {
         if (!buybackFees[_token].active || _amount == 0) return;
         
-        address[] memory path = new address[](2);
+        address[] memory path = new address[](3);
         path[0] = _token;
-        path[1] = baseToken;
+        path[1] = IUniswapV2Router02(dexRouter).WETH();
+        path[2] = baseToken;
 
         uint256 beforeBal = IERC20(baseToken).balanceOf(address(this));
+        IERC20(_token).approve(dexRouter, _amount);
         IUniswapV2Router02(dexRouter).swapExactTokensForTokensSupportingFeeOnTransferTokens(
             _amount, 
             0, 
@@ -447,16 +424,37 @@ contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
         IERC20 paymentToken = IERC20(lendInfo.paymentToken);
         if (lendInfo.prepay) {
             uint256 prepayAmount = lendInfo.prepayAmount;
-            require (paymentToken.balanceOf(sender) >= prepayAmount, "Not enough balance for prepay");
-            paymentToken.safeTransferFrom(sender, address(this), prepayAmount);
-            paymentToken.safeTransfer(lendInfo.lender, prepayAmount);
+            require (paymentToken.balanceOf(sender) >= prepayAmount, "not enough balance for prepay");
+            paymentToken.safeTransferFrom(sender, lendInfo.lender, prepayAmount);
         }
 
         uint256 dailyInterest = lendInfo.dailyInterest;
         uint256 duration = lendInfo.borrowDuration / 1 days;
         uint256 requiredInterest = dailyInterest * duration;
-        require (paymentToken.balanceOf(sender) >= requiredInterest, "Not enough balance for interest");
+        require (paymentToken.balanceOf(sender) >= requiredInterest, "not enough balance for interest");
         paymentToken.safeTransferFrom(sender, address(this), requiredInterest);
         lockedTokenAmount[address(paymentToken)] += requiredInterest;
+    }
+
+    function _takeServiceFee(uint256 _deckLpId) internal {
+        address sender = msg.sender;
+        uint256 collectionServiceFeeId = _getServiceFeeId(_deckLpId);
+        if (collectionServiceFeeId > 0) {
+            ServiceFee memory serviceFee = serviceFees[collectionServiceFeeId];
+            IERC20 paymentToken = IERC20(serviceFee.paymentToken);
+            uint256 feeAmount = serviceFee.feeAmount;
+            require (
+                !serviceFee.active ||
+                paymentToken.balanceOf(sender) >= feeAmount, 
+                "not enough balance for serviceFee"
+            );
+            if (serviceFee.active) {
+                paymentToken.safeTransferFrom(sender, address(this), feeAmount);
+                uint256 burnAmount = feeAmount * serviceFee.burnPercent / BASE_POINT;
+                paymentToken.safeTransfer(DEAD, burnAmount);
+
+                _buyBack(address(paymentToken), feeAmount - burnAmount);
+            }
+        }
     }
 }

@@ -85,7 +85,7 @@ interface IDeckMaster is IDeckStructure {
     /// @param _deckLpId        The token id of deck lp.
     /// @param _dailyInterest   The token amount of daily interest.
     /// @param _prepayAmount    The token amount for prepay.
-    /// @param _duration        The duration of lend.
+    /// @param _duration        The duration of lend. (days)
     /// @param _prepay          Status for prepay is required or not.
     /// @param _winDist         Winning Distribution info.
     function lend(
@@ -93,7 +93,7 @@ interface IDeckMaster is IDeckStructure {
         uint256 _deckLpId,
         uint256 _dailyInterest,
         uint256 _prepayAmount,
-        uint256 _duration,
+        uint16 _duration,
         bool _prepay,
         WinningDistribution memory _winDist
     ) external;
@@ -143,14 +143,20 @@ interface IDeckMaster is IDeckStructure {
 
     /// @notice Get the information about the borrowing for certain deckLp.
     /// @param _deckLpId The token id of deckLp.
-    /// @return duration        Borrow duration
+    /// @return lender          The address of lender.
+    /// @return borrower        The address of borrower.
+    /// @return duration        Borrow duration.
+    /// @return borrowTimestamp The timestamp of borrowed deck.
     /// @return prepay          Prepay amount.
     /// @return interest        Daily interest.
     /// @return winDistribution Distribution of win.
     function getReceiptDeckLpInfo(
         uint256 _deckLpId
     ) external view returns (
+        address lender,
+        address borrower,
         uint256 duration, 
+        uint256 borrowTimestamp,
         uint256 prepay, 
         uint256 interest, 
         WinningDistribution memory winDistribution
@@ -167,12 +173,6 @@ interface IDeckMaster is IDeckStructure {
     /// @notice Get deckLp count.
     /// @return Total deckLp count.
     function getAllDeckCount() external view returns (uint256);
-
-    /// @notice Get opener address.
-    function getCollectionAddress() external view returns (address[] memory);
-
-    /// @notice Get contract address of bundles.
-    function getBundlesAddress() external view returns (address[] memory);
 
     /// @notice Get if service fee is active and the total amount per serviceFeeId.
     function getServiceFeeInfo(uint256 _serviceFeedId) external view returns (ServiceFee memory);

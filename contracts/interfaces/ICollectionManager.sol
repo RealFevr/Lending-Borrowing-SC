@@ -28,8 +28,4 @@ interface ICollectionManager {
     function getAllowedCollections() external view returns (address[] memory);
 
     function getAllowedBundles() external view returns (address[] memory);
-
-    function getCollectionAddress() external view returns (address[] memory);
-
-    function getBundlesAddress() external view returns (address[] memory);
 }

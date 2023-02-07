@@ -36,7 +36,11 @@ interface IServiceManager is IDeckStructure {
     function checkDeckLpAvailableForClaimInterest(
         address _user, 
         uint256 _deckLpId
-    ) external returns (uint256 interestAmount, address paymentToken);
+    ) external returns (
+        uint256 interestAmount, 
+        uint256 receiptDeckLpId,
+        address paymentToken
+    );
 
     function getDeckLendInfo(uint256 _deckLpId) external view returns (
         address _lender,
@@ -49,7 +53,10 @@ interface IServiceManager is IDeckStructure {
     function isLendDeckLp(uint256 _deckLpId) external view returns (bool);
 
     function getReceiptDeckLpInfo(uint256 _deckLpId) external view returns (
+        address lender,
+        address borrower,
         uint256 duration, 
+        uint256 borrowTimestamp,
         uint256 prepay, 
         uint256 interest, 
         WinningDistribution memory winDistribution
