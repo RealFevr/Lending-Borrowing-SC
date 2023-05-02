@@ -65,7 +65,7 @@ Bundle NFTs together.
 
 ### Functions
 
-| Function  | Purpose | Details | Function Type |
+| Function  | Purpose | Function Type |
 | ------------- | ------------- | ------------- | 
 | setServiceFee  | Sets the serviceFee charged by RealFevr | Admin |
 | linkServiceFee  | Links service fee to a collection by address | Public |
