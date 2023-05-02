@@ -68,8 +68,8 @@ Bundle NFTs together.
 | Function  | Purpose | Function Type |
 | ------------- | ------------- | ------------- | 
 | setServiceFee  | Sets the serviceFee charged by RealFevr | Admin |
-| linkServiceFee  | Links service fee to a collection by address | Public |
-| setDepositFlag  | Sets the flag for deposits by address and limit | Public |
+| linkServiceFee  | Links service fee to a collection by address | Admin |
+| setDepositFlag  | Sets the flag for deposits by address and limit | Admin |
 | depositCollections  | creates and deposits the bundle  | Public |
 | depositBundle  | Gets the information on the bundle  | Public |
 | setAcceptableCollections  | Sets acceptable NFT collection addresses to create a bundle | Admin |
