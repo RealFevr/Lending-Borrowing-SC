@@ -4,11 +4,10 @@ pragma solidity ^0.8.19;
 interface ILendingMaster {
     struct LendingReq {
         address paymentToken;
-        uint256 deckId;
         uint256 dailyInterest;
         uint256 prepayAmount;
-        uint16 _maxDuration;
-        bool _prepay;
+        uint16 maxDuration;
+        bool prepay;
     }
 
     struct DeckInfo {
@@ -17,6 +16,11 @@ interface ILendingMaster {
         uint256 startTime;
         uint256 endTime;
         uint256[] deckIds;
+    }
+
+    struct CollectionInfo {
+        address[] collections;
+        uint256[] tokenIds;
     }
 
     struct ServiceFee {
@@ -34,9 +38,12 @@ interface ILendingMaster {
 
     /// @notice Set acceptable ERC20 token.
     /// @dev Only owner can call this function.
-    /// @param _token   The address of ERC20 token.
+    /// @param _tokens   The addresses of ERC20 token.
     /// @param _accept  Status for accept or not.
-    function setAcceptableERC20(address _token, bool _accept) external;
+    function setAcceptableERC20(
+        address[] memory _tokens,
+        bool _accept
+    ) external;
 
     /// @notice Set acceptable Collections.
     /// @dev Only owner can call this function.
@@ -107,10 +114,6 @@ interface ILendingMaster {
     /// @dev Only NLBundle owner can call this function.
     function makeLBundle(uint256[] memory _deckIds) external;
 
-    /// @notice Remove LBundle and exract all collections.
-    /// @dev Only NLBundle owner can call this function.
-    function removeLBundle(uint256 _deckId) external;
-
     /// @notice list decks for lending.
     /// @dev Only NLBundle owner can call this function.
     /// @param _deckIds The deckIds.
@@ -122,7 +125,7 @@ interface ILendingMaster {
 
     /// @notice Borrow decks with deckIds.
     /// @dev Borrowers can borrow several decks but from only one lender.
-    function borrow(uint256[] memory _deckIds) external;
+    function borrow(uint256[] memory _deckIds, uint256 _duration) external;
 
     /// @notice Let lender claim the interests for deck related to lending/borrowing.
     function claimLendingInterest(uint256 _deckId) external;
@@ -137,6 +140,10 @@ interface ILendingMaster {
     /// @param _token       The address of token.
     /// @param _buybackFee  Fee percent of buyback.
     function setBuybackFee(address _token, uint16 _buybackFee) external;
+
+    /// @notice Withdraw collections.
+    /// @param _deckIds deckIds to withdraw.
+    function withdrawCollection(uint256[] memory _deckIds) external;
 
     function getAllLendDecks(
         address _account
@@ -159,6 +166,8 @@ interface ILendingMaster {
     function getAllowedTokens() external view returns (address[] memory);
 
     function getAllowedCollections() external view returns (address[] memory);
+
+    function getAllowedNLBundles() external view returns (address[] memory);
 
     function getListedDecks() external view returns (uint256[] memory);
 }
