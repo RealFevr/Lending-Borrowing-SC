@@ -97,6 +97,14 @@ interface ILendingMaster {
         uint256 _depositLimit
     ) external;
 
+    /// @notice Deposit single collection.
+    /// @dev Users can deposit several collections once.
+    /// @dev Every collection will be independent deck.
+    function depositSingleCollection(
+        address[] memory _collections,
+        uint256[] memory _tokenIds
+    ) external;
+
     /// @notice Deposit Bundle Collection and get deckLp.
     /// @param _bundleAddress The address of bundle Collection.
     /// @param _tokenId       The token id of Bundle Collection.

@@ -10,7 +10,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import "./interfaces/ILendingMaster.sol";
-import "./interfaces/BundleInterface.sol";
+import "./interfaces/BundlesInterface.sol";
 import "./interfaces/IUniswapRouter02.sol";
 
 contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
@@ -163,6 +163,12 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         string memory _feeName,
         uint16 _burnPercent
     ) external override onlyOwner {
+        require(
+            allowedTokens.contains(_paymentToken),
+            "payment token is not allowed"
+        );
+        require(_burnPercent <= FIXED_POINT / 2, "invalid burn percent");
+        require(_feeAmount > 0, "invalid feeAmount");
         serviceFees[serviceFeeId++] = ServiceFee(
             _paymentToken,
             _feeAmount,
@@ -232,6 +238,51 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     ) external override onlyOwner {
         require(allowedTokens.contains(_token), "token is not approved");
         buybackFees[_token].feeRate = _buybackFee;
+    }
+
+    /// @inheritdoc ILendingMaster
+    function depositSingleCollection(
+        address[] memory _collections,
+        uint256[] memory _tokenIds
+    ) external override {
+        address sender = msg.sender;
+        uint256 length = _collections.length;
+        require(length > 0, "invalid length array");
+        require(length == _tokenIds.length, "mismatch length array");
+
+        for (uint256 i = 0; i < length; i++) {
+            address collection = _collections[i];
+            uint256 tokenId = _tokenIds[i];
+            require(
+                allowedCollections.contains(collection),
+                "not allowed collection"
+            );
+            require(
+                IERC721(collection).ownerOf(tokenId) == sender,
+                "not collection owner"
+            );
+            require(
+                depositLimitations[collection] > 0,
+                "exceeds to max deposit limit"
+            );
+            depositLimitations[collection] -= 1;
+            IERC721(collection).transferFrom(sender, address(this), tokenId);
+
+            depositedIdsPerUser[sender].add(deckId);
+            uint256[] memory deckIds = new uint256[](1);
+            deckIds[0] = deckId;
+            deckInfo[deckId] = DeckInfo(sender, address(0), 0, 0, deckIds);
+            address[] memory collections = new address[](1);
+            uint256[] memory tokenIds = new uint256[](1);
+            collections[0] = collection;
+            tokenIds[0] = tokenId;
+            collectionInfoPerDeck[deckId] = CollectionInfo(
+                collections,
+                tokenIds
+            );
+            depositedIdsPerUser[sender].add(deckId);
+            totalDepositedIds.add(deckId++);
+        }
     }
 
     /// @inheritdoc ILendingMaster
@@ -361,7 +412,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             LendingReq memory req = _lendingReqs[i];
             require(
                 depositedIdsPerUser[sender].contains(_deckId),
-                "invalid deckId"
+                "not deck owner"
             );
             require(
                 !listedIdsPerUser[sender].contains(_deckId),
@@ -459,7 +510,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             DeckInfo memory info = deckInfo[_deckId];
             require(
                 depositedIdsPerUser[sender].contains(_deckId),
-                "invalid deckId"
+                "not deck owner"
             );
             require(
                 info.borrower == address(0) || info.endTime < block.timestamp,
