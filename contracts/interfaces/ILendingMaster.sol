@@ -2,6 +2,14 @@
 pragma solidity ^0.8.19;
 
 interface ILendingMaster {
+    struct ListedDeckInfo {
+        uint256 deckId;
+        uint256 claimableAmount;
+        uint256 startTime;
+        uint256 endTime;
+        address paymentToken;
+        address borrower;
+    }
     struct LendingReq {
         address paymentToken;
         uint256 dailyInterest;
@@ -15,6 +23,7 @@ interface ILendingMaster {
         address borrower;
         uint256 startTime;
         uint256 endTime;
+        uint256 lockedInterestAmount;
         uint256[] deckIds;
     }
 
@@ -153,9 +162,23 @@ interface ILendingMaster {
     /// @param _deckIds deckIds to withdraw.
     function withdrawCollection(uint256[] memory _deckIds) external;
 
-    function getAllLendDecks(
-        address _account
+    function withdrawToken(address _token) external;
+
+    function getUserDepositedIds(
+        address _user
     ) external view returns (uint256[] memory);
+
+    function getUserListedIds(
+        address _user
+    ) external view returns (uint256[] memory);
+
+    function getUserNotListedIds(
+        address _user
+    ) external view returns (uint256[] memory);
+
+    function getUserListedDeckInfo(
+        address _user
+    ) external view returns (ListedDeckInfo[] memory);
 
     function getAllBorrowedDecks(
         address _account
@@ -165,11 +188,9 @@ interface ILendingMaster {
         uint256 _deckId
     ) external view returns (DeckInfo memory);
 
-    function getServiceFeeInfo(
-        uint256 _serviceFeedId
-    ) external view returns (ServiceFee memory);
-
-    function getLockedERC20(address _token) external view returns (uint256);
+    function getCollectionInfo(
+        uint256 _deckId
+    ) external view returns (CollectionInfo memory);
 
     function getAllowedTokens() external view returns (address[] memory);
 
