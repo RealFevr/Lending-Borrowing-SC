@@ -2,14 +2,6 @@
 pragma solidity ^0.8.19;
 
 interface ILendingMaster {
-    struct ListedDeckInfo {
-        uint256 deckId;
-        uint256 claimableAmount;
-        uint256 startTime;
-        uint256 endTime;
-        address paymentToken;
-        address borrower;
-    }
     struct LendingReq {
         address paymentToken;
         uint256 dailyInterest;
@@ -176,15 +168,11 @@ interface ILendingMaster {
         address _user
     ) external view returns (uint256[] memory);
 
-    function getUserListedDeckInfo(
-        address _user
-    ) external view returns (ListedDeckInfo[] memory);
-
     function getAllBorrowedDecks(
         address _account
     ) external view returns (uint256[] memory);
 
-    function getDeckLpInfo(
+    function getDeckInfo(
         uint256 _deckId
     ) external view returns (DeckInfo memory);
 

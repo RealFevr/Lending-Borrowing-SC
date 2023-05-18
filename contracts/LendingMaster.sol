@@ -163,10 +163,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         string memory _feeName,
         uint16 _burnPercent
     ) external override onlyOwner {
-        require(
-            allowedTokens.contains(_paymentToken),
-            "payment token is not allowed"
-        );
+        _checkAcceptedToken(_paymentToken);
         require(_burnPercent <= FIXED_POINT, "invalid burn percent");
         require(_feeAmount > 0, "invalid feeAmount");
         serviceFees[serviceFeeId++] = ServiceFee(
@@ -187,12 +184,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             _serviceFeeId != 0 && _serviceFeeId < serviceFeeId,
             "invalid serviceFeeId"
         );
-        require(
-            _collectionAddress != address(0) &&
-                (allowedCollections.contains(_collectionAddress) ||
-                    allowedNLBundles.contains(_collectionAddress)),
-            "not acceptable collection address"
-        );
+        _checkAcceptedCollection(_collectionAddress);
         require(
             linkServiceFees[_collectionAddress] == 0,
             "already linked to a fee"
@@ -213,12 +205,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         address _collectionAddress,
         uint256 _depositLimit
     ) external override onlyOwner {
-        require(
-            _collectionAddress != address(0) &&
-                (allowedCollections.contains(_collectionAddress) ||
-                    allowedNLBundles.contains(_collectionAddress)),
-            "invalid collection address"
-        );
+        _checkAcceptedCollection(_collectionAddress);
         require(_depositLimit > 0, "invalid deposit limit");
         depositLimitations[_collectionAddress] = _depositLimit;
     }
@@ -228,7 +215,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         address _token,
         bool _turningStatus
     ) external override onlyOwner {
-        require(allowedTokens.contains(_token), "token is not approved");
+        _checkAcceptedToken(_token);
         require(buybackFees[_token].feeRate > 0, "buybackFee rate is not set");
         buybackFees[_token].active = _turningStatus;
     }
@@ -238,7 +225,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         address _token,
         uint16 _buybackFee
     ) external override onlyOwner {
-        require(allowedTokens.contains(_token), "token is not approved");
+        _checkAcceptedToken(_token);
         require(_buybackFee > 0, "invalid buybackFee rate");
         buybackFees[_token].feeRate = _buybackFee;
     }
@@ -400,10 +387,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                 !listedIdsPerUser[sender].contains(_deckId),
                 "already listed"
             );
-            require(
-                allowedTokens.contains(req.paymentToken),
-                "not allowed paymentToken"
-            );
+            _checkAcceptedToken(req.paymentToken);
             require(req.dailyInterest > 0, "invalid dailyInterest");
             require(req.maxDuration > 0, "invalid maxDuration");
             require(
@@ -539,7 +523,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     function withdrawToken(address _token) external override onlyOwner {
         uint256 claimableAmount = IERC20(_token).balanceOf(address(this)) -
             lockedTokenAmount[_token];
-        require (claimableAmount > 0, "no withdrawable amount");
+        require(claimableAmount > 0, "no withdrawable amount");
         IERC20(_token).safeTransfer(owner(), claimableAmount);
     }
 
@@ -582,36 +566,6 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     }
 
     /// @inheritdoc ILendingMaster
-    function getUserListedDeckInfo(
-        address _user
-    ) external view override returns (ListedDeckInfo[] memory) {
-        uint256 length = listedIdsPerUser[_user].length();
-        if (length == 0) {
-            return new ListedDeckInfo[](0);
-        }
-
-        ListedDeckInfo[] memory info = new ListedDeckInfo[](length);
-        for (uint256 i = 0; i < length; i++) {
-            uint256 id = listedIdsPerUser[_user].at(i);
-            DeckInfo memory _deckInfo = deckInfo[id];
-            uint256 claimableAmount = lockedInterestsPerDeck[id];
-            if (deckInfo[id].endTime > block.timestamp) {
-                claimableAmount -= deckInfo[id].lockedInterestAmount;
-            }
-            info[i] = ListedDeckInfo(
-                id,
-                claimableAmount,
-                _deckInfo.startTime,
-                _deckInfo.endTime,
-                lendingReqsPerDeck[id].paymentToken,
-                _deckInfo.borrower
-            );
-        }
-
-        return info;
-    }
-
-    /// @inheritdoc ILendingMaster
     function getAllBorrowedDecks(
         address _account
     ) external view override returns (uint256[] memory) {
@@ -640,7 +594,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     }
 
     /// @inheritdoc ILendingMaster
-    function getDeckLpInfo(
+    function getDeckInfo(
         uint256 _deckId
     ) external view override returns (DeckInfo memory) {
         return deckInfo[_deckId];
@@ -817,6 +771,21 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         require(
             depositLimitations[_collection] > 0,
             "exceeds to max deposit limit"
+        );
+    }
+
+    function _checkAcceptedToken(address _token) internal view {
+        require(allowedTokens.contains(_token), "token is not allowed");
+    }
+
+    function _checkAcceptedCollection(
+        address _collectionAddress
+    ) internal view {
+        require(
+            _collectionAddress != address(0) &&
+                (allowedCollections.contains(_collectionAddress) ||
+                    allowedNLBundles.contains(_collectionAddress)),
+            "not acceptable collection address"
         );
     }
 }

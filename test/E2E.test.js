@@ -329,7 +329,7 @@ describe("Lending-Borrowing Protocol test", function () {
                         "USDC fee setting",
                         100 // 10%
                     )
-                ).to.be.revertedWith("payment token is not allowed");
+                ).to.be.revertedWith("token is not allowed");
             });
 
             it("reverts if burnPercent is over 100%", async function () {
@@ -454,7 +454,7 @@ describe("Lending-Borrowing Protocol test", function () {
         it("reverts if collection is not approved", async function () {
             await expect(
                 this.lendingMaster.setDepositFlag(this.collection_3.address, 20)
-            ).to.be.revertedWith("invalid collection address");
+            ).to.be.revertedWith("not acceptable collection address");
         });
 
         it("reverts if depositLimit is zero", async function () {
@@ -486,10 +486,10 @@ describe("Lending-Borrowing Protocol test", function () {
                 ).to.be.revertedWith("Ownable: caller is not the owner");
             });
 
-            it("reverts if token is not approved", async function () {
+            it("reverts if token is not allowed", async function () {
                 await expect(
                     this.lendingMaster.setBuybackFee(this.USDC.address, 20)
-                ).to.be.revertedWith("token is not approved");
+                ).to.be.revertedWith("token is not allowed");
             });
 
             it("reverts if buybackFee rate is zero", async function () {
@@ -513,10 +513,10 @@ describe("Lending-Borrowing Protocol test", function () {
                 ).to.be.revertedWith("Ownable: caller is not the owner");
             });
 
-            it("reverts if token is not approved", async function () {
+            it("reverts if token is not allowed", async function () {
                 await expect(
                     this.lendingMaster.buybackFeeTake(this.USDC.address, true)
-                ).to.be.revertedWith("token is not approved");
+                ).to.be.revertedWith("token is not allowed");
             });
 
             it("reverts if buybackFee rate is zero", async function () {
@@ -820,7 +820,7 @@ describe("Lending-Borrowing Protocol test", function () {
                                 },
                             ]
                         )
-                    ).to.be.revertedWith("not allowed paymentToken");
+                    ).to.be.revertedWith("token is not allowed");
                 });
 
                 it("reverts if dailyInterest is zero", async function () {
@@ -1247,7 +1247,11 @@ describe("Lending-Borrowing Protocol test", function () {
                 let collectionInfo = await this.lendingMaster.getCollectionInfo(
                     deckId
                 );
+                let deckInfo = await this.lendingMaster.getDeckInfo(deckId);
 
+                expect(deckInfo.owner).to.be.equal(this.lender_1.address);
+                expect(deckInfo.deckIds.length).to.be.equal(1);
+                expect(deckInfo.deckIds[0]).to.be.equal(deckId);
                 expect(collectionInfo.collections.length).to.be.equal(10);
                 expect(
                     afterDepositedIds.length - beforeDepositedIds.length
