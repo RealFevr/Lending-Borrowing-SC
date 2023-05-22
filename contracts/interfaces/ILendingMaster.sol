@@ -4,9 +4,10 @@ pragma solidity ^0.8.19;
 interface ILendingMaster {
     struct LendingReq {
         address paymentToken;
-        uint256 dailyInterest;
         uint256 prepayAmount;
         uint16 maxDuration;
+        uint16 winningRateForLender;
+        uint16 winningRateForBorrower;
         bool prepay;
     }
 
@@ -15,7 +16,6 @@ interface ILendingMaster {
         address borrower;
         uint256 startTime;
         uint256 endTime;
-        uint256 lockedInterestAmount;
         uint256[] deckIds;
     }
 
@@ -135,9 +135,6 @@ interface ILendingMaster {
     /// @notice Borrow decks with deckIds.
     /// @dev Borrowers can borrow several decks but from only one lender.
     function borrow(uint256[] memory _deckIds, uint256 _duration) external;
-
-    /// @notice Let lender claim the interests for deck related to lending/borrowing.
-    function claimLendingInterest(uint256 _deckId) external;
 
     /// @notice Enables the buyback for a certain ERC20.
     /// @dev Only owner can call this function.
