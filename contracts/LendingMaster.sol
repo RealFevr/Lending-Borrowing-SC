@@ -420,7 +420,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                 "already listed"
             );
             _checkAcceptedToken(req.paymentToken);
-            require(req.maxDuration > 0, "invalid maxDuration");
+            require(req.lendDuration > 0, "invalid lendDuration");
             require(
                 req.winningRateForLender +
                     req.winningRateForBorrower +
@@ -441,17 +441,12 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     }
 
     /// @inheritdoc ILendingMaster
-    function borrow(
-        uint256[] memory _depositIds,
-        uint256 _duration
-    ) external override {
+    function borrow(uint256[] memory _depositIds) external override {
         address sender = msg.sender;
         uint256 length = _depositIds.length;
         uint256 startTime = block.timestamp;
-        uint256 endTime = startTime + _duration * 1 days;
         (, uint16 totalWinningRate) = getUserBorrowedIds(sender);
         require(length > 0, "invalid length array");
-        require(_duration > 0, "invalid borrow duration");
 
         address lender = deckInfo[_depositIds[0]].owner;
         for (uint256 i = 0; i < length; i++) {
@@ -464,12 +459,12 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                 info.borrower == address(0) || info.endTime < block.timestamp,
                 "already borrowed"
             );
-            require(req.maxDuration > _duration, "exceeds to max duration");
             require(
                 totalWinningRate + req.winningRateForBorrower + RF_GAME_FEE <=
                     FIXED_POINT,
                 "over max DistRate"
             );
+            uint256 endTime = startTime + req.lendDuration * 1 days;
             totalWinningRate += req.winningRateForBorrower;
             if (req.prepay) {
                 require(
@@ -497,7 +492,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                 totalBorrowedIds.add(_depositId);
             }
         }
-        emit Borrowed(_depositIds, _duration);
+        emit Borrowed(_depositIds);
     }
 
     /// @inheritdoc ILendingMaster

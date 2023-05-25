@@ -5,7 +5,7 @@ interface ILendingMaster {
     struct LendingReq {
         address paymentToken;
         uint256 prepayAmount;
-        uint16 maxDuration;
+        uint16 lendDuration;
         uint16 winningRateForLender;
         uint16 winningRateForBorrower;
         bool prepay;
@@ -134,7 +134,7 @@ interface ILendingMaster {
 
     /// @notice Borrow decks with depositIds.
     /// @dev Borrowers can borrow several decks but from only one lender.
-    function borrow(uint256[] memory _depositIds, uint256 _duration) external;
+    function borrow(uint256[] memory _depositIds) external;
 
     /// @notice Enables the buyback for a certain ERC20.
     /// @dev Only owner can call this function.
@@ -227,7 +227,7 @@ interface ILendingMaster {
 
     event Lent(uint256[] depositIds, LendingReq[] lendingReqs);
 
-    event Borrowed(uint256[] depositIds, uint256 duration);
+    event Borrowed(uint256[] depositIds);
 
     event BuybackFeeTake(address indexed token, bool turningStatus);
 
