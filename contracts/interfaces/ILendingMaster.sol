@@ -16,7 +16,7 @@ interface ILendingMaster {
         address borrower;
         uint256 startTime;
         uint256 endTime;
-        uint256[] deckIds;
+        uint256[] depositIds;
     }
 
     struct CollectionInfo {
@@ -121,20 +121,20 @@ interface ILendingMaster {
 
     /// @notice Make LBundle with several collections.
     /// @dev Only NLBundle owner can call this function.
-    function makeLBundle(uint256[] memory _deckIds) external;
+    function makeLBundle(uint256[] memory _depositIds) external;
 
     /// @notice list decks for lending.
     /// @dev Only NLBundle owner can call this function.
-    /// @param _deckIds The deckIds.
+    /// @param _depositIds The depositIds.
     /// @param _lendingReqs The lending requriements information.
     function lend(
-        uint256[] memory _deckIds,
+        uint256[] memory _depositIds,
         LendingReq[] memory _lendingReqs
     ) external;
 
-    /// @notice Borrow decks with deckIds.
+    /// @notice Borrow decks with depositIds.
     /// @dev Borrowers can borrow several decks but from only one lender.
-    function borrow(uint256[] memory _deckIds, uint256 _duration) external;
+    function borrow(uint256[] memory _depositIds, uint256 _duration) external;
 
     /// @notice Enables the buyback for a certain ERC20.
     /// @dev Only owner can call this function.
@@ -148,8 +148,8 @@ interface ILendingMaster {
     function setBuybackFee(address _token, uint16 _buybackFee) external;
 
     /// @notice Withdraw collections.
-    /// @param _deckIds deckIds to withdraw.
-    function withdrawCollection(uint256[] memory _deckIds) external;
+    /// @param _depositIds depositIds to withdraw.
+    function withdrawCollection(uint256[] memory _depositIds) external;
 
     function withdrawToken(address _token) external;
 
@@ -165,16 +165,18 @@ interface ILendingMaster {
         address _user
     ) external view returns (uint256[] memory);
 
-    function getAllBorrowedDecks(
+    function getUserBorrowedIds(
         address _account
-    ) external view returns (uint256[] memory);
+    ) external view returns (uint256[] memory, uint16);
+
+    function getTotalBorrowedIds() external view returns (uint256[] memory);
 
     function getDeckInfo(
-        uint256 _deckId
+        uint256 _depositId
     ) external view returns (DeckInfo memory);
 
     function getCollectionInfo(
-        uint256 _deckId
+        uint256 _depositId
     ) external view returns (CollectionInfo memory);
 
     function getAllowedTokens() external view returns (address[] memory);
@@ -184,4 +186,54 @@ interface ILendingMaster {
     function getAllowedNLBundles() external view returns (address[] memory);
 
     function getListedDecks() external view returns (uint256[] memory);
+
+    event AcceptableERC20Set(address[] indexed tokens, bool accept);
+
+    event ApprovedCollectionsSet(address[] indexed collections, bool accept);
+
+    event NLBundlesSet(address[] indexed nlBundles, bool accept);
+
+    event ServiceFeeSet(
+        uint256 serviceFeeId,
+        address indexed paymentToken,
+        uint256 feeAmount,
+        bool feeFlag,
+        string feeName,
+        uint16 burnPercent
+    );
+
+    event ServiceFeeLinked(
+        uint256 serviceFeeId,
+        address indexed collectionAddress
+    );
+
+    event MaxAmountForBundleSet(uint256 newAmount);
+
+    event DepositFlagSet(
+        address indexed collectionAddress,
+        uint256 depositLimit
+    );
+
+    event SingleCollectionDeposited(
+        address[] indexed collections,
+        uint256[] tokenIds
+    );
+
+    event NLBundleDeposited(address indexed bundleAddress, uint256 tokenId);
+
+    event LBundleDeposited(address[] indexed collections, uint256[] tokenIds);
+
+    event LBundleMade(uint256[] depositIds);
+
+    event Lent(uint256[] depositIds, LendingReq[] lendingReqs);
+
+    event Borrowed(uint256[] depositIds, uint256 duration);
+
+    event BuybackFeeTake(address indexed token, bool turningStatus);
+
+    event BuybackFeeSet(address indexed token, uint16 buybackFee);
+
+    event CollectionWithdrawn(uint256[] depositIds);
+
+    event TokenWithdrawn(address indexed token);
 }
