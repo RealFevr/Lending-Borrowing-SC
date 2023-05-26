@@ -285,10 +285,9 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                 tokenIds
             );
             depositedIdsPerUser[sender].add(depositId);
-            totalDepositedIds.add(depositId++);
+            totalDepositedIds.add(depositId);
+            emit SingleCollectionDeposited(collection, tokenId, depositId++);
         }
-
-        emit SingleCollectionDeposited(_collections, _tokenIds);
     }
 
     /// @inheritdoc ILendingMaster
@@ -330,9 +329,9 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         );
 
         depositedIdsPerUser[sender].add(depositId);
-        totalDepositedIds.add(depositId++);
+        totalDepositedIds.add(depositId);
 
-        emit NLBundleDeposited(_bundleAddress, _tokenId);
+        emit NLBundleDeposited(_bundleAddress, _tokenId, depositId++);
     }
 
     /// @inheritdoc ILendingMaster
@@ -362,9 +361,9 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             _tokenIds
         );
         depositedIdsPerUser[sender].add(depositId);
-        totalDepositedIds.add(depositId++);
+        totalDepositedIds.add(depositId);
 
-        emit LBundleDeposited(_collections, _tokenIds);
+        emit LBundleDeposited(_collections, _tokenIds, depositId++);
     }
 
     /// @inheritdoc ILendingMaster

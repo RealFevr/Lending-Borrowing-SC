@@ -215,13 +215,22 @@ interface ILendingMaster {
     );
 
     event SingleCollectionDeposited(
-        address[] indexed collections,
-        uint256[] tokenIds
+        address indexed collection,
+        uint256 tokenId,
+        uint256 depositId
     );
 
-    event NLBundleDeposited(address indexed bundleAddress, uint256 tokenId);
+    event NLBundleDeposited(
+        address indexed bundleAddress,
+        uint256 tokenId,
+        uint256 depositId
+    );
 
-    event LBundleDeposited(address[] indexed collections, uint256[] tokenIds);
+    event LBundleDeposited(
+        address[] indexed collections,
+        uint256[] tokenIds,
+        uint256 depositId
+    );
 
     event LBundleMade(uint256[] depositIds);
 
