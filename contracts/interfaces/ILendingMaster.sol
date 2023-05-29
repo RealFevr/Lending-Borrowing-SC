@@ -11,7 +11,7 @@ interface ILendingMaster {
         bool prepay;
     }
 
-    struct DeckInfo {
+    struct DepositInfo {
         address owner;
         address borrower;
         uint256 startTime;
@@ -106,7 +106,7 @@ interface ILendingMaster {
         bool _isLBundleMode
     ) external;
 
-    /// @notice Deposit Bundle Collection and get deckLp.
+    /// @notice Deposit Bundle Collection.
     /// @param _bundleAddress The address of bundle Collection.
     /// @param _tokenId       The token id of Bundle Collection.
     function depositNLBundle(address _bundleAddress, uint256 _tokenId) external;
@@ -115,7 +115,7 @@ interface ILendingMaster {
     /// @dev Only NLBundle owner can call this function.
     function makeLBundle(uint256[] memory _depositIds) external;
 
-    /// @notice list decks for lending.
+    /// @notice list collections for lending.
     /// @dev Only NLBundle owner can call this function.
     /// @param _depositIds The depositIds.
     /// @param _lendingReqs The lending requriements information.
@@ -124,8 +124,8 @@ interface ILendingMaster {
         LendingReq[] memory _lendingReqs
     ) external;
 
-    /// @notice Borrow decks with depositIds.
-    /// @dev Borrowers can borrow several decks but from only one lender.
+    /// @notice Borrow collections with depositIds.
+    /// @dev Borrowers can borrow several collections but from only one lender.
     function borrow(uint256[] memory _depositIds) external payable;
 
     /// @notice Enables the buyback for a certain ERC20.
@@ -163,9 +163,9 @@ interface ILendingMaster {
 
     function getTotalBorrowedIds() external view returns (uint256[] memory);
 
-    function getDeckInfo(
+    function getDepositInfo(
         uint256 _depositId
-    ) external view returns (DeckInfo memory);
+    ) external view returns (DepositInfo memory);
 
     function getCollectionInfo(
         uint256 _depositId
@@ -177,7 +177,10 @@ interface ILendingMaster {
 
     function getAllowedNLBundles() external view returns (address[] memory);
 
-    function getTotalListedDecks() external view returns (uint256[] memory);
+    function getTotalListedCollections()
+        external
+        view
+        returns (uint256[] memory);
 
     event AcceptableERC20Set(address[] indexed tokens, bool accept);
 

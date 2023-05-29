@@ -52,7 +52,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     mapping(uint256 => ServiceFee) public serviceFees;
 
     /// The information of each deck.
-    mapping(uint256 => DeckInfo) private deckInfo;
+    mapping(uint256 => DepositInfo) private depositInfo;
 
     /// Collection information per depositId
     mapping(uint256 => CollectionInfo) private collectionInfoPerDeck;
@@ -273,7 +273,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
 
             if (!_isLBundleMode) {
                 depositedIdsPerUser[sender].add(depositId);
-                deckInfo[depositId] = DeckInfo(
+                depositInfo[depositId] = DepositInfo(
                     sender,
                     address(0),
                     0,
@@ -296,7 +296,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
 
         if (_isLBundleMode) {
             depositedIdsPerUser[sender].add(depositId);
-            deckInfo[depositId] = DeckInfo(
+            depositInfo[depositId] = DepositInfo(
                 sender,
                 address(0),
                 0,
@@ -340,7 +340,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         IERC721(_bundleAddress).transferFrom(sender, address(this), _tokenId);
 
         depositedIdsPerUser[sender].add(depositId);
-        deckInfo[depositId] = DeckInfo(
+        depositInfo[depositId] = DepositInfo(
             sender,
             address(0),
             0,
@@ -366,7 +366,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         require(maxAmountForBundle >= length, "exceeds to maxAmountForBundle");
         for (uint256 i = 0; i < length; i++) {
             uint256 _depositId = _depositIds[i];
-            DeckInfo storage info = deckInfo[_depositId];
+            DepositInfo storage info = depositInfo[_depositId];
             require(
                 depositedIdsPerUser[sender].contains(_depositId),
                 "invalid depositId"
@@ -384,7 +384,13 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         }
         depositedIdsPerUser[sender].add(depositId);
         listedIdsPerUser[sender].add(depositId);
-        deckInfo[depositId] = DeckInfo(sender, address(0), 0, 0, _depositIds);
+        depositInfo[depositId] = DepositInfo(
+            sender,
+            address(0),
+            0,
+            0,
+            _depositIds
+        );
         totalDepositedIds.add(depositId++);
         emit LBundleMade(_depositIds);
     }
@@ -439,10 +445,10 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         (, uint16 totalWinningRate) = getUserBorrowedIds(sender);
         uint256 length = Utils.checkUintArray(_depositIds);
 
-        address lender = deckInfo[_depositIds[0]].owner;
+        address lender = depositInfo[_depositIds[0]].owner;
         for (uint256 i = 0; i < length; i++) {
             uint256 _depositId = _depositIds[i];
-            DeckInfo storage info = deckInfo[_depositId];
+            DepositInfo storage info = depositInfo[_depositId];
             LendingReq memory req = lendingReqsPerDeck[_depositId];
             require(totalListedIds.contains(_depositId), "not listed for lend");
             require(info.owner == lender, "should be same lender");
@@ -503,7 +509,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
 
         for (uint256 i = 0; i < length; i++) {
             uint256 _depositId = _depositIds[i];
-            DeckInfo memory info = deckInfo[_depositId];
+            DepositInfo memory info = depositInfo[_depositId];
             require(
                 depositedIdsPerUser[sender].contains(_depositId),
                 "not deck owner"
@@ -588,7 +594,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         uint256[] memory listedIds = totalBorrowedIds.values();
         uint256 amount = 0;
         for (uint256 i = 0; i < listedIds.length; i++) {
-            DeckInfo memory info = deckInfo[listedIds[i]];
+            DepositInfo memory info = depositInfo[listedIds[i]];
             if (info.borrower == address(0) || info.endTime < block.timestamp) {
                 continue;
             }
@@ -599,7 +605,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         uint256 index = 0;
         for (uint256 i = 0; i < listedIds.length; i++) {
             uint256 _depositId = listedIds[i];
-            DeckInfo memory info = deckInfo[_depositId];
+            DepositInfo memory info = depositInfo[_depositId];
             if (info.borrower == address(0) || info.endTime < block.timestamp) {
                 continue;
             }
@@ -617,7 +623,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         uint256[] memory listedIds = borrowedIdsPerUser[_account].values();
         uint256 amount = 0;
         for (uint256 i = 0; i < listedIds.length; i++) {
-            DeckInfo memory info = deckInfo[listedIds[i]];
+            DepositInfo memory info = depositInfo[listedIds[i]];
             if (info.borrower == address(0) || info.endTime < block.timestamp) {
                 continue;
             }
@@ -628,7 +634,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         uint256 index = 0;
         for (uint256 i = 0; i < listedIds.length; i++) {
             uint256 _depositId = listedIds[i];
-            DeckInfo memory info = deckInfo[_depositId];
+            DepositInfo memory info = depositInfo[_depositId];
             if (info.borrower == address(0) || info.endTime < block.timestamp) {
                 continue;
             }
@@ -641,10 +647,10 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     }
 
     /// @inheritdoc ILendingMaster
-    function getDeckInfo(
+    function getDepositInfo(
         uint256 _depositId
-    ) external view override returns (DeckInfo memory) {
-        return deckInfo[_depositId];
+    ) external view override returns (DepositInfo memory) {
+        return depositInfo[_depositId];
     }
 
     /// @inheritdoc ILendingMaster
@@ -685,11 +691,15 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     }
 
     /// @inheritdoc ILendingMaster
-    function getTotalListedDecks() external view returns (uint256[] memory) {
+    function getTotalListedCollections()
+        external
+        view
+        returns (uint256[] memory)
+    {
         uint256 cnt = 0;
         for (uint256 i = 0; i < totalListedIds.length(); i++) {
             uint256 id = totalListedIds.at(i);
-            if (deckInfo[id].endTime < block.timestamp) {
+            if (depositInfo[id].endTime < block.timestamp) {
                 cnt++;
             }
         }
@@ -697,7 +707,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         uint256 index = 0;
         for (uint256 i = 0; i < totalListedIds.length(); i++) {
             uint256 id = totalListedIds.at(i);
-            if (deckInfo[id].endTime < block.timestamp) {
+            if (depositInfo[id].endTime < block.timestamp) {
                 ids[index++] = id;
             }
         }
