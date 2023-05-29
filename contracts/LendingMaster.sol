@@ -13,6 +13,7 @@ import "./interfaces/ILendingMaster.sol";
 import "./interfaces/BundlesInterface.sol";
 import "./interfaces/IUniswapRouter02.sol";
 import "./interfaces/IWBNB.sol";
+import "./libraries/Utils.sol";
 
 contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     using SafeERC20 for IERC20;
@@ -97,8 +98,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         address[] memory _tokens,
         bool _accept
     ) external override onlyOwner {
-        uint256 length = _tokens.length;
-        require(length > 0, "invalid length array");
+        uint256 length = Utils.checkAddressArray(_tokens);
         for (uint256 i = 0; i < length; i++) {
             address token = _tokens[i];
             if (_accept) {
@@ -118,8 +118,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         address[] memory _collections,
         bool _accept
     ) external override onlyOwner {
-        uint256 length = _collections.length;
-        require(length > 0, "invalid length array");
+        uint256 length = Utils.checkAddressArray(_collections);
         for (uint256 i = 0; i < length; i++) {
             address collection = _collections[i];
             if (_accept) {
@@ -145,8 +144,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         address[] memory _nlBundles,
         bool _accept
     ) external override onlyOwner {
-        uint256 length = _nlBundles.length;
-        require(length > 0, "invalid length array");
+        uint256 length = Utils.checkAddressArray(_nlBundles);
         for (uint256 i = 0; i < length; i++) {
             address bundle = _nlBundles[i];
             if (_accept) {
@@ -258,9 +256,10 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         bool _isLBundleMode
     ) external override {
         address sender = msg.sender;
-        uint256 length = _collections.length;
-        require(length > 0, "invalid length array");
-        require(length == _tokenIds.length, "mismatch length array");
+        uint256 length = Utils.compareAddressArrayLength(
+            _collections,
+            _tokenIds.length
+        );
         require(
             !_isLBundleMode || maxAmountForBundle >= length,
             "exceeds to maxAmountForBundle"
@@ -274,22 +273,16 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
 
             if (!_isLBundleMode) {
                 depositedIdsPerUser[sender].add(depositId);
-                uint256[] memory depositIds = new uint256[](1);
-                depositIds[0] = depositId;
                 deckInfo[depositId] = DeckInfo(
                     sender,
                     address(0),
                     0,
                     0,
-                    depositIds
+                    Utils.genUintArrayWithArg(depositId)
                 );
-                address[] memory collections = new address[](1);
-                uint256[] memory tokenIds = new uint256[](1);
-                collections[0] = collection;
-                tokenIds[0] = tokenId;
                 collectionInfoPerDeck[depositId] = CollectionInfo(
-                    collections,
-                    tokenIds
+                    Utils.genAddressArrayWithArg(collection),
+                    Utils.genUintArrayWithArg(tokenId)
                 );
                 depositedIdsPerUser[sender].add(depositId);
                 totalDepositedIds.add(depositId);
@@ -303,14 +296,12 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
 
         if (_isLBundleMode) {
             depositedIdsPerUser[sender].add(depositId);
-            uint256[] memory depositIds = new uint256[](1);
-            depositIds[0] = depositId;
             deckInfo[depositId] = DeckInfo(
                 sender,
                 address(0),
                 0,
                 0,
-                depositIds
+                Utils.genUintArrayWithArg(depositId)
             );
             collectionInfoPerDeck[depositId] = CollectionInfo(
                 _collections,
@@ -349,16 +340,17 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         IERC721(_bundleAddress).transferFrom(sender, address(this), _tokenId);
 
         depositedIdsPerUser[sender].add(depositId);
-        uint256[] memory depositIds = new uint256[](1);
-        address[] memory depositedCollections = new address[](1);
-        depositIds[0] = depositId;
-        deckInfo[depositId] = DeckInfo(sender, address(0), 0, 0, depositIds);
+        deckInfo[depositId] = DeckInfo(
+            sender,
+            address(0),
+            0,
+            0,
+            Utils.genUintArrayWithArg(depositId)
+        );
 
-        depositedCollections[0] = _bundleAddress;
-        depositIds[0] = _tokenId;
         collectionInfoPerDeck[depositId] = CollectionInfo(
-            depositedCollections,
-            depositIds
+            Utils.genAddressArrayWithArg(_bundleAddress),
+            Utils.genUintArrayWithArg(_tokenId)
         );
 
         depositedIdsPerUser[sender].add(depositId);
@@ -369,9 +361,8 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
 
     /// @inheritdoc ILendingMaster
     function makeLBundle(uint256[] memory _depositIds) external override {
-        uint256 length = _depositIds.length;
         address sender = msg.sender;
-        require(length > 0, "invalid length array");
+        uint256 length = Utils.checkUintArray(_depositIds);
         require(maxAmountForBundle >= length, "exceeds to maxAmountForBundle");
         for (uint256 i = 0; i < length; i++) {
             uint256 _depositId = _depositIds[i];
@@ -404,9 +395,10 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         LendingReq[] memory _lendingReqs
     ) external override {
         address sender = msg.sender;
-        uint256 length = _depositIds.length;
-        require(length > 0, "invalid length array");
-        require(length == _lendingReqs.length, "mismatch length array");
+        uint256 length = Utils.compareUintArrayLength(
+            _depositIds,
+            _lendingReqs.length
+        );
 
         for (uint256 i = 0; i < length; i++) {
             uint256 _depositId = _depositIds[i];
@@ -443,10 +435,9 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     /// @inheritdoc ILendingMaster
     function borrow(uint256[] memory _depositIds) external payable override {
         address sender = msg.sender;
-        uint256 length = _depositIds.length;
         uint256 startTime = block.timestamp;
         (, uint16 totalWinningRate) = getUserBorrowedIds(sender);
-        require(length > 0, "invalid length array");
+        uint256 length = Utils.checkUintArray(_depositIds);
 
         address lender = deckInfo[_depositIds[0]].owner;
         for (uint256 i = 0; i < length; i++) {
@@ -508,8 +499,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         uint256[] memory _depositIds
     ) external override {
         address sender = msg.sender;
-        uint256 length = _depositIds.length;
-        require(length > 0, "invalid length array");
+        uint256 length = Utils.checkUintArray(_depositIds);
 
         for (uint256 i = 0; i < length; i++) {
             uint256 _depositId = _depositIds[i];
