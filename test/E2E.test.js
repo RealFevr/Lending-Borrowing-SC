@@ -892,7 +892,7 @@ describe("Lending-Borrowing Protocol test", function () {
         });
 
         it("reverts if borrow duration is zero", async function () {
-          totalListedIds = await this.lendingMaster.getListedDecks();
+          totalListedIds = await this.lendingMaster.getTotalListedDecks();
           await expect(
             this.lendingMaster
               .connect(this.borrower_1)

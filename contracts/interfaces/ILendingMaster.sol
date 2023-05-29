@@ -98,26 +98,18 @@ interface ILendingMaster {
         uint256 _depositLimit
     ) external;
 
-    /// @notice Deposit single collection.
-    /// @dev Users can deposit several collections once.
-    /// @dev Every collection will be independent deck.
-    function depositSingleCollection(
+    /// @notice Deposit single collections or as LBundle.
+    /// @dev User can deposit serveral collections at once.
+    function depositCollection(
         address[] memory _collections,
-        uint256[] memory _tokenIds
+        uint256[] memory _tokenIds,
+        bool _isLBundleMode
     ) external;
 
     /// @notice Deposit Bundle Collection and get deckLp.
     /// @param _bundleAddress The address of bundle Collection.
     /// @param _tokenId       The token id of Bundle Collection.
     function depositNLBundle(address _bundleAddress, uint256 _tokenId) external;
-
-    /// @notice Deposit several collections and make LBundle through lending contract.
-    /// @param _collections The addresses of collection.
-    /// @param _tokenIds    The tokenIds of collections.
-    function depositLBundle(
-        address[] memory _collections,
-        uint256[] memory _tokenIds
-    ) external;
 
     /// @notice Make LBundle with several collections.
     /// @dev Only NLBundle owner can call this function.
@@ -134,7 +126,7 @@ interface ILendingMaster {
 
     /// @notice Borrow decks with depositIds.
     /// @dev Borrowers can borrow several decks but from only one lender.
-    function borrow(uint256[] memory _depositIds) external;
+    function borrow(uint256[] memory _depositIds) external payable;
 
     /// @notice Enables the buyback for a certain ERC20.
     /// @dev Only owner can call this function.
@@ -185,7 +177,7 @@ interface ILendingMaster {
 
     function getAllowedNLBundles() external view returns (address[] memory);
 
-    function getListedDecks() external view returns (uint256[] memory);
+    function getTotalListedDecks() external view returns (uint256[] memory);
 
     event AcceptableERC20Set(address[] indexed tokens, bool accept);
 

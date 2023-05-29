@@ -12,6 +12,7 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "./interfaces/ILendingMaster.sol";
 import "./interfaces/BundlesInterface.sol";
 import "./interfaces/IUniswapRouter02.sol";
+import "./interfaces/IWBNB.sol";
 
 contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     using SafeERC20 for IERC20;
@@ -251,14 +252,19 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     }
 
     /// @inheritdoc ILendingMaster
-    function depositSingleCollection(
+    function depositCollection(
         address[] memory _collections,
-        uint256[] memory _tokenIds
+        uint256[] memory _tokenIds,
+        bool _isLBundleMode
     ) external override {
         address sender = msg.sender;
         uint256 length = _collections.length;
         require(length > 0, "invalid length array");
         require(length == _tokenIds.length, "mismatch length array");
+        require(
+            !_isLBundleMode || maxAmountForBundle >= length,
+            "exceeds to maxAmountForBundle"
+        );
 
         for (uint256 i = 0; i < length; i++) {
             address collection = _collections[i];
@@ -266,6 +272,36 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             _checkCollection(collection, tokenId);
             IERC721(collection).transferFrom(sender, address(this), tokenId);
 
+            if (!_isLBundleMode) {
+                depositedIdsPerUser[sender].add(depositId);
+                uint256[] memory depositIds = new uint256[](1);
+                depositIds[0] = depositId;
+                deckInfo[depositId] = DeckInfo(
+                    sender,
+                    address(0),
+                    0,
+                    0,
+                    depositIds
+                );
+                address[] memory collections = new address[](1);
+                uint256[] memory tokenIds = new uint256[](1);
+                collections[0] = collection;
+                tokenIds[0] = tokenId;
+                collectionInfoPerDeck[depositId] = CollectionInfo(
+                    collections,
+                    tokenIds
+                );
+                depositedIdsPerUser[sender].add(depositId);
+                totalDepositedIds.add(depositId);
+                emit SingleCollectionDeposited(
+                    collection,
+                    tokenId,
+                    depositId++
+                );
+            }
+        }
+
+        if (_isLBundleMode) {
             depositedIdsPerUser[sender].add(depositId);
             uint256[] memory depositIds = new uint256[](1);
             depositIds[0] = depositId;
@@ -276,17 +312,14 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                 0,
                 depositIds
             );
-            address[] memory collections = new address[](1);
-            uint256[] memory tokenIds = new uint256[](1);
-            collections[0] = collection;
-            tokenIds[0] = tokenId;
             collectionInfoPerDeck[depositId] = CollectionInfo(
-                collections,
-                tokenIds
+                _collections,
+                _tokenIds
             );
             depositedIdsPerUser[sender].add(depositId);
             totalDepositedIds.add(depositId);
-            emit SingleCollectionDeposited(collection, tokenId, depositId++);
+
+            emit LBundleDeposited(_collections, _tokenIds, depositId++);
         }
     }
 
@@ -332,38 +365,6 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         totalDepositedIds.add(depositId);
 
         emit NLBundleDeposited(_bundleAddress, _tokenId, depositId++);
-    }
-
-    /// @inheritdoc ILendingMaster
-    function depositLBundle(
-        address[] memory _collections,
-        uint256[] memory _tokenIds
-    ) external override {
-        address sender = msg.sender;
-        uint256 length = _collections.length;
-        require(length > 0, "invalid length array");
-        require(length == _tokenIds.length, "mismatch length array");
-        require(maxAmountForBundle >= length, "exceeds to maxAmountForBundle");
-
-        for (uint256 i = 0; i < length; i++) {
-            address collection = _collections[i];
-            uint256 tokenId = _tokenIds[i];
-            _checkCollection(collection, tokenId);
-            IERC721(collection).transferFrom(sender, address(this), tokenId);
-        }
-
-        depositedIdsPerUser[sender].add(depositId);
-        uint256[] memory depositIds = new uint256[](1);
-        depositIds[0] = depositId;
-        deckInfo[depositId] = DeckInfo(sender, address(0), 0, 0, depositIds);
-        collectionInfoPerDeck[depositId] = CollectionInfo(
-            _collections,
-            _tokenIds
-        );
-        depositedIdsPerUser[sender].add(depositId);
-        totalDepositedIds.add(depositId);
-
-        emit LBundleDeposited(_collections, _tokenIds, depositId++);
     }
 
     /// @inheritdoc ILendingMaster
@@ -440,7 +441,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     }
 
     /// @inheritdoc ILendingMaster
-    function borrow(uint256[] memory _depositIds) external override {
+    function borrow(uint256[] memory _depositIds) external payable override {
         address sender = msg.sender;
         uint256 length = _depositIds.length;
         uint256 startTime = block.timestamp;
@@ -466,17 +467,25 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             uint256 endTime = startTime + req.lendDuration * 1 days;
             totalWinningRate += req.winningRateForBorrower;
             if (req.prepay) {
-                require(
-                    IERC20(req.paymentToken).balanceOf(sender) >=
-                        req.prepayAmount,
-                    "not enough for prepayment"
-                );
-                _transferFrom(
-                    req.paymentToken,
-                    sender,
-                    info.owner,
-                    req.prepayAmount
-                );
+                if (req.paymentToken == address(0)) {
+                    require(
+                        msg.value >= req.prepayAmount,
+                        "not enough for prepayment"
+                    );
+                } else {
+                    require(
+                        IERC20(req.paymentToken).balanceOf(sender) >=
+                            req.prepayAmount,
+                        "not enough for prepayment"
+                    );
+
+                    _transferFrom(
+                        req.paymentToken,
+                        sender,
+                        info.owner,
+                        req.prepayAmount
+                    );
+                }
             }
 
             _takeServiceFee(sender, collectionInfoPerDeck[_depositId]);
@@ -523,9 +532,21 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
 
     /// @inheritdoc ILendingMaster
     function withdrawToken(address _token) external override onlyOwner {
-        uint256 claimableAmount = IERC20(_token).balanceOf(address(this));
-        require(claimableAmount > 0, "no withdrawable amount");
-        IERC20(_token).safeTransfer(owner(), claimableAmount);
+        address sender = msg.sender;
+        require(
+            (_token == address(0) && address(this).balance > 0) &&
+                (IERC20(_token).balanceOf(address(this)) > 0),
+            "no withdrawable amount"
+        );
+        uint256 claimableAmount;
+        if (_token == address(0)) {
+            claimableAmount = address(this).balance;
+            _transferBNB(sender, claimableAmount);
+        } else {
+            claimableAmount = IERC20(_token).balanceOf(address(this));
+            IERC20(_token).safeTransfer(owner(), claimableAmount);
+        }
+
         emit TokenWithdrawn(_token);
     }
 
@@ -674,7 +695,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     }
 
     /// @inheritdoc ILendingMaster
-    function getListedDecks() external view returns (uint256[] memory) {
+    function getTotalListedDecks() external view returns (uint256[] memory) {
         uint256 cnt = 0;
         for (uint256 i = 0; i < totalListedIds.length(); i++) {
             uint256 id = totalListedIds.at(i);
@@ -741,19 +762,22 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             IERC20 paymentToken = IERC20(serviceFee.paymentToken);
             uint256 feeAmount = serviceFee.feeAmount;
             if (serviceFee.active) {
-                require(
-                    paymentToken.balanceOf(_sender) >= feeAmount,
-                    "not enough balance for serviceFee"
-                );
-                feeAmount = _transferFrom(
-                    address(paymentToken),
-                    _sender,
-                    address(this),
-                    feeAmount
-                );
+                if (serviceFee.paymentToken != address(0)) {} else {
+                    feeAmount = _transferFrom(
+                        address(paymentToken),
+                        _sender,
+                        address(this),
+                        feeAmount
+                    );
+                }
+
                 uint256 burnAmount = (feeAmount * serviceFee.burnPercent) /
                     FIXED_POINT;
-                paymentToken.safeTransfer(DEAD, burnAmount);
+                if (serviceFee.paymentToken == address(0)) {
+                    _transferBNB(DEAD, burnAmount);
+                } else {
+                    paymentToken.safeTransfer(DEAD, burnAmount);
+                }
                 _buyBack(address(paymentToken), feeAmount - burnAmount);
             }
         }
@@ -764,10 +788,19 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
 
         uint256 swappedAmount = _amount;
         if (_paymentToken != fevrToken) {
-            address[] memory path = new address[](3);
-            path[0] = _paymentToken;
-            path[1] = IUniswapV2Router02(dexRouter).WETH();
-            path[2] = fevrToken;
+            address WETH = IUniswapV2Router02(dexRouter).WETH();
+            address[] memory path;
+            if (_paymentToken == address(0)) {
+                IWBNB(WETH).deposit{value: _amount}();
+                path = new address[](2);
+                path[0] = WETH;
+                path[1] = fevrToken;
+            } else {
+                path = new address[](3);
+                path[0] = _paymentToken;
+                path[1] = WETH;
+                path[2] = fevrToken;
+            }
 
             uint256 beforeBal = IERC20(fevrToken).balanceOf(address(this));
             IERC20(_paymentToken).approve(dexRouter, _amount);
@@ -817,5 +850,11 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                     allowedNLBundles.contains(_collectionAddress)),
             "not acceptable collection address"
         );
+    }
+
+    function _transferBNB(address _to, uint256 _amount) internal {
+        require(_amount > 0, "invalid send BNB amount");
+        (bool sent, ) = _to.call{value: _amount}("");
+        require(sent, "sending BNB failed");
     }
 }
