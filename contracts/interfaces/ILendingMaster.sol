@@ -8,6 +8,7 @@ interface ILendingMaster {
         uint16 lendDuration;
         uint16 winningRateForLender;
         uint16 winningRateForBorrower;
+        uint16 gameFee;
         bool prepay;
     }
 
@@ -17,6 +18,11 @@ interface ILendingMaster {
         uint256 startTime;
         uint256 endTime;
         uint256[] depositIds;
+    }
+
+    struct DepositLimitInfo {
+        uint256 minAmount;
+        uint256 maxAmount;
     }
 
     struct CollectionInfo {
@@ -36,6 +42,10 @@ interface ILendingMaster {
         bool active;
         uint16 feeRate;
     }
+
+    /// @notice Set treasury contract address.
+    /// @dev Only owner can call this function.
+    function setTreasury(address _treasury) external;
 
     /// @notice Set acceptable ERC20 token.
     /// @dev Only owner can call this function.
@@ -60,6 +70,10 @@ interface ILendingMaster {
     /// @param _nlBundles The addresses of Opener.
     /// @param _accept The status for accept or not.
     function setNLBundles(address[] memory _nlBundles, bool _accept) external;
+
+    /// @notice Set gameFee rate.
+    /// @dev Only owner can call this function.
+    function setGameFee(uint16 _gameFee) external;
 
     /// @notice Enable/Disable deposit/merge LBundle.
     /// @dev Only owner can call this function.
@@ -91,15 +105,18 @@ interface ILendingMaster {
 
     /// @notice Set max amount for bundle.
     /// @dev Only owner can call this function.
-    function setMaxAmountForBundle(uint256 _newAmount) external;
+    function configAmountForBundle(
+        uint256 _minAmount,
+        uint256 _maxAmount
+    ) external;
 
     /// @notice Set deposit flag.
     /// @dev Only owner can call this function.
     /// @param _collectionAddress      The address of collection.
-    /// @param _depositLimit    The max deposit collection count.
+    /// @param _depositLimit    The min/max deposit collection count.
     function setDepositFlag(
         address _collectionAddress,
-        uint256 _depositLimit
+        DepositLimitInfo memory _depositLimit
     ) external;
 
     /// @notice Deposit single collections or as LBundle.
@@ -163,7 +180,7 @@ interface ILendingMaster {
 
     function getUserBorrowedIds(
         address _account
-    ) external view returns (uint256[] memory, uint16);
+    ) external view returns (uint256[] memory, uint16, uint256);
 
     function getTotalBorrowedIds() external view returns (uint256[] memory);
 
@@ -206,11 +223,11 @@ interface ILendingMaster {
         address indexed collectionAddress
     );
 
-    event MaxAmountForBundleSet(uint256 newAmount);
+    event AmountForBundleConfigured(uint256 minAmount, uint256 maxAmount);
 
     event DepositFlagSet(
         address indexed collectionAddress,
-        uint256 depositLimit
+        DepositLimitInfo depositLimit
     );
 
     event SingleCollectionDeposited(
