@@ -84,6 +84,8 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
 
     uint16 public constant RF_GAME_FEE = 50; // 5%
 
+    bool public LBundleMode;
+
     constructor(address _fevrToken, address _dexRouter) {
         require(_fevrToken != address(0), "zero fevr token address");
         require(_dexRouter != address(0), "zero dex router address");
@@ -137,6 +139,12 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         }
 
         emit ApprovedCollectionsSet(_collections, _accept);
+    }
+
+    /// @inheritdoc ILendingMaster
+    function enableLBundleMode(bool _enable) external override onlyOwner {
+        LBundleMode = _enable;
+        emit LBundleModeEnabled(_enable);
     }
 
     /// @inheritdoc ILendingMaster
@@ -264,6 +272,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             !_isLBundleMode || maxAmountForBundle >= length,
             "exceeds to maxAmountForBundle"
         );
+        require(!_isLBundleMode || LBundleMode, "LBundleMode disabled");
 
         for (uint256 i = 0; i < length; i++) {
             address collection = _collections[i];
@@ -360,10 +369,11 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     }
 
     /// @inheritdoc ILendingMaster
-    function makeLBundle(uint256[] memory _depositIds) external override {
+    function mergeDeposits(uint256[] memory _depositIds) external override {
         address sender = msg.sender;
         uint256 length = Utils.checkUintArray(_depositIds);
         require(maxAmountForBundle >= length, "exceeds to maxAmountForBundle");
+        require(LBundleMode, "LBundleMode disabled");
         for (uint256 i = 0; i < length; i++) {
             uint256 _depositId = _depositIds[i];
             DepositInfo storage info = depositInfo[_depositId];

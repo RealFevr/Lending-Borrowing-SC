@@ -61,6 +61,10 @@ interface ILendingMaster {
     /// @param _accept The status for accept or not.
     function setNLBundles(address[] memory _nlBundles, bool _accept) external;
 
+    /// @notice Enable/Disable deposit/merge LBundle.
+    /// @dev Only owner can call this function.
+    function enableLBundleMode(bool _enable) external;
+
     /// @notice Set service fee.
     /// @dev Only owner can call this function.
     /// @param _paymentToken    The address of payment token.
@@ -113,7 +117,7 @@ interface ILendingMaster {
 
     /// @notice Make LBundle with several collections.
     /// @dev Only NLBundle owner can call this function.
-    function makeLBundle(uint256[] memory _depositIds) external;
+    function mergeDeposits(uint256[] memory _depositIds) external;
 
     /// @notice list collections for lending.
     /// @dev Only NLBundle owner can call this function.
@@ -240,4 +244,6 @@ interface ILendingMaster {
     event CollectionWithdrawn(uint256[] depositIds);
 
     event TokenWithdrawn(address indexed token);
+
+    event LBundleModeEnabled(bool _enable);
 }
