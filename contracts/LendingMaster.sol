@@ -152,7 +152,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     }
 
     /// @inheritdoc ILendingMaster
-    function setGameFee(uint16 _gameFee) external override onlyOwner {
+    function setRFGameFee(uint16 _gameFee) external override onlyOwner {
         require(_gameFee <= FIXED_POINT, "invalid gameFee rate");
         RF_GAME_FEE = _gameFee;
     }

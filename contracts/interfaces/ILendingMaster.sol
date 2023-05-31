@@ -73,7 +73,7 @@ interface ILendingMaster {
 
     /// @notice Set gameFee rate.
     /// @dev Only owner can call this function.
-    function setGameFee(uint16 _gameFee) external;
+    function setRFGameFee(uint16 _gameFee) external;
 
     /// @notice Enable/Disable deposit/merge LBundle.
     /// @dev Only owner can call this function.
