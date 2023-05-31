@@ -48,7 +48,7 @@ contract Treasury is Ownable, ITreasury {
         uint16 _buybackFeeRate
     ) external payable override onlyLendingMaster {
         uint256 burnAmount = (_amount * _burnPercent) / FIXED_POINT;
-        if (_paymentToken != address(0)) {
+        if (_paymentToken == address(0)) {
             _transferBNB(DEAD, _amount);
         } else {
             IERC20(_paymentToken).safeTransfer(DEAD, burnAmount);
@@ -60,7 +60,7 @@ contract Treasury is Ownable, ITreasury {
     function withdrawToken(address _token) external override onlyOwner {
         address sender = msg.sender;
         require(
-            (_token == address(0) && address(this).balance > 0) &&
+            (_token == address(0) && address(this).balance > 0) ||
                 (IERC20(_token).balanceOf(address(this)) > 0),
             "no withdrawable amount"
         );

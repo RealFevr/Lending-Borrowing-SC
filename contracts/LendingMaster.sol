@@ -546,26 +546,6 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     }
 
     /// @inheritdoc ILendingMaster
-    function withdrawToken(address _token) external override onlyOwner {
-        address sender = msg.sender;
-        require(
-            (_token == address(0) && address(this).balance > 0) &&
-                (IERC20(_token).balanceOf(address(this)) > 0),
-            "no withdrawable amount"
-        );
-        uint256 claimableAmount;
-        if (_token == address(0)) {
-            claimableAmount = address(this).balance;
-            _transferBNB(sender, claimableAmount);
-        } else {
-            claimableAmount = IERC20(_token).balanceOf(address(this));
-            IERC20(_token).safeTransfer(owner(), claimableAmount);
-        }
-
-        emit TokenWithdrawn(_token);
-    }
-
-    /// @inheritdoc ILendingMaster
     function getUserDepositedIds(
         address _user
     ) external view override returns (uint256[] memory) {
@@ -670,8 +650,8 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     /// @inheritdoc ILendingMaster
     function getDepositInfo(
         uint256 _depositId
-    ) external view override returns (DepositInfo memory) {
-        return depositInfo[_depositId];
+    ) external view override returns (DepositInfo memory, uint256[] memory) {
+        return (depositInfo[_depositId], depositInfo[_depositId].depositIds);
     }
 
     /// @inheritdoc ILendingMaster
@@ -836,6 +816,6 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     function _transferBNB(address _to, uint256 _amount) internal {
         require(_amount > 0, "invalid send BNB amount");
         (bool sent, ) = _to.call{value: _amount}("");
-        require(sent, "sending BNB failed");
+        require(sent, "lendingMaster: sending BNB failed");
     }
 }

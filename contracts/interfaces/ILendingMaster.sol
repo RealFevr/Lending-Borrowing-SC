@@ -164,8 +164,6 @@ interface ILendingMaster {
     /// @param _depositIds depositIds to withdraw.
     function withdrawCollection(uint256[] memory _depositIds) external;
 
-    function withdrawToken(address _token) external;
-
     function getUserDepositedIds(
         address _user
     ) external view returns (uint256[] memory);
@@ -186,7 +184,7 @@ interface ILendingMaster {
 
     function getDepositInfo(
         uint256 _depositId
-    ) external view returns (DepositInfo memory);
+    ) external view returns (DepositInfo memory, uint256[] memory);
 
     function getCollectionInfo(
         uint256 _depositId
@@ -259,8 +257,6 @@ interface ILendingMaster {
     event BuybackFeeSet(address indexed token, uint16 buybackFee);
 
     event CollectionWithdrawn(uint256[] depositIds);
-
-    event TokenWithdrawn(address indexed token);
 
     event LBundleModeEnabled(bool _enable);
 }
