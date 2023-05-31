@@ -1,903 +1,1412 @@
-const { expect } = require('chai');
-const { ethers } = require('hardhat');
-const { constants } = require('@openzeppelin/test-helpers');
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+const { constants } = require("@openzeppelin/test-helpers");
 
-const { uniswap_abi } = require('../external_abi/uniswap.abi.json');
-const { erc20_abi } = require('../external_abi/erc20.abi.json');
+const { uniswap_abi } = require("../external_abi/uniswap.abi.json");
+const { erc20_abi } = require("../external_abi/erc20.abi.json");
 
-const { deploy, bigNum, smallNum, bigNum_6, getCurrentTimestamp, smallNum_6, spendTime, day } = require('../scripts/utils');
+const {
+    deploy,
+    smallNum,
+    getCurrentTimestamp,
+    bigNum,
+    spendTime,
+    day,
+} = require("../scripts/utils");
 
-describe ("Lending-Borrowing Protocol test", function () {
+describe("Lending-Borrowing Protocol test", function () {
+    let uniswapRouterAddress = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
     let fevrAddress = "0x9fB83c0635De2E815fd1c21b3a292277540C2e8d";
     let daiAddress = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
     let usdtAddress = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
     let usdcAddress = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-    let uniswapRouterAddress = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
+    let DEADWallet = "0x000000000000000000000000000000000000dEaD";
+    let borrowId;
+    let WETH;
 
-    before (async function () {
+    before(async function () {
         [
-            this.owner,
-            this.user_1,
-            this.user_2,
-            this.user_3
+            this.deployer,
+            this.lender_1,
+            this.lender_2,
+            this.lender_3,
+            this.borrower_1,
+            this.borrower_2,
+            this.borrower_3,
         ] = await ethers.getSigners();
+        this.dexRouter = new ethers.Contract(
+            uniswapRouterAddress,
+            uniswap_abi,
+            this.deployer
+        );
+        this.DAI = new ethers.Contract(daiAddress, erc20_abi, this.deployer);
+        this.Fevr = new ethers.Contract(fevrAddress, erc20_abi, this.deployer);
+        this.USDT = new ethers.Contract(usdtAddress, erc20_abi, this.deployer);
+        this.USDC = new ethers.Contract(usdcAddress, erc20_abi, this.deployer);
 
-        this.dexRouter = new ethers.Contract(uniswapRouterAddress, uniswap_abi, this.owner);
-        this.DAI = new ethers.Contract(daiAddress, erc20_abi, this.owner);
-        this.Fevr = new ethers.Contract(fevrAddress, erc20_abi, this.owner);
-        this.USDT = new ethers.Contract(usdtAddress, erc20_abi, this.owner);
-        this.USDC = new ethers.Contract(usdcAddress, erc20_abi, this.owner);
-
-        this.collectionManager = await deploy("CollectionManager", "CollectionManager");
-        this.serviceManager = await deploy("ServiceManager", "ServiceManager");
-        this.deckMaster = await deploy(
-            "DeckMaster", 
-            "DeckMaster", 
-            this.Fevr.address, 
-            this.collectionManager.address, 
-            this.serviceManager.address,
+        this.treasury = await deploy(
+            "Treasury",
+            "Treasury",
+            this.Fevr.address,
             this.dexRouter.address
         );
-        this.bundleNFT = await deploy("MockBundles", "MockBundles");
-        this.collectionId = await deploy("MockCollectionId", "MockCollectionId");
-        this.collectionId_1 = await deploy("MockCollectionId", "MockCollectionId");
-    })
+        this.lendingMaster = await deploy(
+            "LendingMaster",
+            "LendingMaster",
+            this.treasury.address
+        );
+        this.NLBundle_1 = await deploy("MockBundles", "MockBundles");
+        this.NLBundle_2 = await deploy("MockBundles", "MockBundles");
+        this.NLBundle_3 = await deploy("MockBundles", "MockBundles");
+        this.collection_1 = await deploy(
+            "MockCollectionId",
+            "MockCollectionId"
+        );
+        this.collection_2 = await deploy(
+            "MockCollectionId",
+            "MockCollectionId"
+        );
+        this.collection_3 = await deploy(
+            "MockCollectionId",
+            "MockCollectionId"
+        );
+        WETH = await this.dexRouter.WETH();
+    });
 
-    it ("check deployed successfully and initialize contracts", async function () {
+    it("check deployment and initialize Treasury contract", async function () {
         console.log("deployed successfully!");
-        await this.collectionManager.setDeckMaster(this.deckMaster.address);
-        await this.serviceManager.setDeckMaster(this.deckMaster.address);
+        console.log("initializing treasury contract...");
+        await expect(
+            this.treasury
+                .connect(this.lender_1)
+                .setLendingMaster(this.lendingMaster.address)
+        ).to.be.revertedWith("Ownable: caller is not the owner");
+        await this.treasury.setLendingMaster(this.lendingMaster.address);
         console.log("initialized successfully!");
-    })
+    });
 
-    it ("swap ETH to USDT, DAI, FEVR", async function () {
-        let WETH = await this.dexRouter.WETH();
+    it("swap ETH to USDT, DAI and Fevr", async function () {
+        let decimals = await this.USDT.decimals();
+        console.log("USDT decimals", decimals);
+        let beforeBal = await this.USDT.balanceOf(this.deployer.address);
         await this.dexRouter.swapExactETHForTokens(
             0,
             [WETH, this.USDT.address],
-            this.owner.address,
+            this.deployer.address,
             BigInt(await getCurrentTimestamp()) + BigInt(100),
-            {value: bigNum(100)}
+            { value: bigNum(100) }
+        );
+        let afterBal = await this.USDT.balanceOf(this.deployer.address);
+        console.log(
+            "received USDT amount: ",
+            smallNum(BigInt(afterBal) - BigInt(beforeBal), decimals)
         );
 
+        decimals = await this.DAI.decimals();
+        beforeBal = await this.DAI.balanceOf(this.deployer.address);
         await this.dexRouter.swapExactETHForTokens(
             0,
             [WETH, this.DAI.address],
-            this.owner.address,
+            this.deployer.address,
             BigInt(await getCurrentTimestamp()) + BigInt(100),
-            {value: bigNum(100)}
+            { value: bigNum(100) }
+        );
+        afterBal = await this.DAI.balanceOf(this.deployer.address);
+        console.log(
+            "received DAI amount: ",
+            smallNum(BigInt(afterBal) - BigInt(beforeBal), decimals)
         );
 
+        decimals = await this.Fevr.decimals();
+        beforeBal = await this.Fevr.balanceOf(this.deployer.address);
         await this.dexRouter.swapExactETHForTokens(
             0,
             [WETH, this.Fevr.address],
-            this.owner.address,
+            this.deployer.address,
             BigInt(await getCurrentTimestamp()) + BigInt(100),
-            {value: bigNum(100)}
+            { value: bigNum(100) }
         );
-    })
+        afterBal = await this.Fevr.balanceOf(this.deployer.address);
+        console.log(
+            "received Fevr amount: ",
+            smallNum(BigInt(afterBal) - BigInt(beforeBal), decimals)
+        );
+    });
 
-    describe ("Set acceptable ERC20 token", function () {
-        it ("get acceptable ERC20 token addresses", async function () {
-            let allowedTokens = await this.deckMaster.getAllowedTokens();
-            expect (allowedTokens.length).to.be.equal(0);
-        })
-
-        it ("add acceptable ERC20 tokens", async function () {
-            await expect (
-                this.deckMaster.connect(this.user_1).setAcceptableERC20(this.DAI.address, true)
+    describe("setTreasury", function () {
+        it("reverts if caller is not the owner", async function () {
+            await expect(
+                this.lendingMaster
+                    .connect(this.lender_1)
+                    .setTreasury(this.treasury.address)
             ).to.be.revertedWith("Ownable: caller is not the owner");
+        });
 
-            await expect (
-                this.deckMaster.setAcceptableERC20(constants.ZERO_ADDRESS, true)
-            ).to.be.revertedWith("zero token address");
+        it("setTreasury and check", async function () {
+            await this.lendingMaster.setTreasury(this.treasury.address);
+        });
+    });
 
-            await expect (
-                this.deckMaster.setAcceptableERC20(this.DAI.address, true)
-            ).to.be.emit(this.deckMaster, "AcceptableERC20Set")
-            .withArgs(this.DAI.address, true);
-
-            let allowedTokens = await this.deckMaster.getAllowedTokens();
-            expect (allowedTokens.length).to.be.equal(1);
-            expect (allowedTokens[0]).to.be.equal(this.DAI.address);
-        })
-
-        it ("remove acceptable ERC20 tokens", async function () {
-            await expect (
-                this.deckMaster.setAcceptableERC20(this.DAI.address, false)
-            ).to.be.emit(this.deckMaster, "AcceptableERC20Set")
-            .withArgs(this.DAI.address, false);
-
-            let allowedTokens = await this.deckMaster.getAllowedTokens();
-            expect (allowedTokens.length).to.be.equal(0);
-
-            await this.deckMaster.setAcceptableERC20(this.DAI.address, true);
-            await this.deckMaster.setAcceptableERC20(this.USDT.address, true);
-            await this.deckMaster.setAcceptableERC20(this.Fevr.address, true);
-
-            allowedTokens = await this.deckMaster.getAllowedTokens();
-            expect (allowedTokens.length).to.be.equal(3);
-
-            expect (allowedTokens[0]).to.be.equal(this.DAI.address);
-            expect (allowedTokens[1]).to.be.equal(this.USDT.address);
-            expect (allowedTokens[2]).to.be.equal(this.Fevr.address);
-        })
-
-        it ("reverts if already add/remove ERC20 tokens", async function () {
-            await expect (
-                this.deckMaster.setAcceptableERC20(this.DAI.address, true)
-            ).to.be.revertedWith("Already set");
-        })
-    })
-
-    describe ("Set acceptable collections", function () {
-        it ("get acceptable collections", async function () {
-            let allowedCollections = await this.deckMaster.getAllowedCollections();
-            expect (allowedCollections.length).to.be.equal(0);
-        })
-
-        it ("add acceptable collections", async function () {
-            await expect (
-                this.deckMaster.connect(this.user_1).setAcceptableCollections([this.collectionId.address], true)
+    describe("setAcceptableERC20", function () {
+        it("reverts if caller is not the owner", async function () {
+            await expect(
+                this.lendingMaster
+                    .connect(this.lender_1)
+                    .setAcceptableERC20([], true)
             ).to.be.revertedWith("Ownable: caller is not the owner");
-            await expect (
-                this.deckMaster.setAcceptableCollections([this.collectionId.address], true)
-            ).to.be.emit(this.deckMaster, "AcceptableCollectionsSet");
-            let allowedCollections = await this.deckMaster.getAllowedCollections();
-            expect (allowedCollections.length).to.be.equal(1);
-            expect (allowedCollections[0]).to.be.equal(this.collectionId.address);
-        })
+        });
 
-        it ("remove acceptable collections", async function () {
-            await this.deckMaster.setAcceptableCollections([this.collectionId.address], false);
-            allowedCollections = await this.deckMaster.getAllowedCollections();
-            expect (allowedCollections.length).to.be.equal(0);
-        })
+        it("reverts if array length is zero", async function () {
+            await expect(
+                this.lendingMaster.setAcceptableERC20([], true)
+            ).to.be.revertedWith("invalid length array");
+        });
 
-        it ("reverts if already add/remove ERC20 tokens", async function () {
-            await expect (
-                this.deckMaster.setAcceptableCollections([this.collectionId.address], false)
-            ).to.be.revertedWith("Already set");
-
-            await this.deckMaster.setAcceptableCollections([this.collectionId.address], true);
-
-            await expect (
-                this.deckMaster.setAcceptableCollections([this.collectionId.address], true)
-            ).to.be.revertedWith("Already set");
-        })
-    })
-
-    describe ("Set acceptable bundle", function () {
-        it ("get acceptable bundle addresses", async function () {
-            let allowedBundles = await this.deckMaster.getAllowedBundles();
-            expect (allowedBundles.length).to.be.equal(0);
-        })
-    
-        it ("add acceptable bundles", async function () {
-            await expect (
-                this.deckMaster.connect(this.user_1).setAcceptableBundle(this.bundleNFT.address, true)
-            ).to.be.revertedWith("Ownable: caller is not the owner");
-    
-            await expect (
-                this.deckMaster.setAcceptableBundle(constants.ZERO_ADDRESS, true)
-            ).to.be.revertedWith("zero address");
-    
-            await expect (
-                this.deckMaster.setAcceptableBundle(this.bundleNFT.address, true)
-            ).to.be.emit(this.deckMaster, "AcceptableBundleSet")
-            .withArgs(this.bundleNFT.address, true);
-    
-            let allowedBundles = await this.deckMaster.getAllowedBundles();
-            expect (allowedBundles.length).to.be.equal(1);
-            expect (allowedBundles[0]).to.be.equal(this.bundleNFT.address);
-        })
-    
-        it ("remove acceptable bundles", async function () {
-            await expect (
-                this.deckMaster.setAcceptableBundle(this.bundleNFT.address, false)
-            ).to.be.emit(this.deckMaster, "AcceptableBundleSet")
-            .withArgs(this.bundleNFT.address, false);
-    
-            let allowedBundles = await this.deckMaster.getAllowedBundles();
-            expect (allowedBundles.length).to.be.equal(0);
-    
-            await this.deckMaster.setAcceptableBundle(this.bundleNFT.address, true);
-    
-            allowedBundles = await this.deckMaster.getAllowedBundles();
-            expect (allowedBundles.length).to.be.equal(1);
-            expect (allowedBundles[0]).to.be.equal(this.bundleNFT.address);
-        })
-    
-        it ("reverts if already add/remove bundles", async function () {
-            await expect (
-                this.deckMaster.setAcceptableBundle(this.bundleNFT.address, true)
-            ).to.be.revertedWith("Already set");
-        })
-    })
-
-    describe ("set required collection amount for a bundle", function () {
-        it ("reverts if caller is not the owner", async function () {
-            await expect (
-                this.deckMaster.connect(this.user_1).setCollectionAmountForBundle(50)
-            ).to.be.revertedWith("Ownable: caller is not the owner");
-        })
-
-        it ("reverts if amount is zero", async function () {
-            await expect (
-                this.deckMaster.setCollectionAmountForBundle(0)
-            ).to.be.revertedWith("invalid amount");
-        })
-
-        it ("set required collection amount as 50", async function () {
-            await expect (
-                this.deckMaster.setCollectionAmountForBundle(50)
-            ).to.be.emit(this.deckMaster, "CollectionAmountForBundleSet")
-            .withArgs(50);
-        })
-    })
-
-    describe ("set service and linke it to collection", function () {
-        describe ("set service fee", function () {
-            it ("reverts if caller is not the owner", async function () {
-                await expect (
-                    this.deckMaster.connect(this.user_1).setServiceFee(
-                        constants.ZERO_ADDRESS,
-                        10,
-                        false,
-                        "Low fee",
-                        20
-                    )
-                ).to.be.revertedWith("Ownable: caller is not the owner");
-            })
-            it ("reverts if payment token is zero address", async function () {
-                await expect (
-                    this.deckMaster.setServiceFee(
-                        constants.ZERO_ADDRESS,
-                        10,
-                        false,
-                        "Low fee",
-                        20
-                    )
-                ).to.be.revertedWith("not acceptable payment token address");
-            })
-
-            it ("set service fee", async function () {
-                let feeAmount = bigNum(10);
-                await expect (
-                    this.deckMaster.setServiceFee(
-                        this.DAI.address,
-                        BigInt(feeAmount),
-                        true,
-                        "Medium Fee",
-                        10  // 10%
-                    )
-                ).to.be.emit(this.deckMaster, "ServiceFeeSet")
-                .withArgs(
+        it("add acceptable tokens", async function () {
+            let allowedTokens = await this.lendingMaster.getAllowedTokens();
+            expect(allowedTokens.length).to.be.equal(0);
+            await this.lendingMaster.setAcceptableERC20(
+                [
+                    this.USDT.address,
                     this.DAI.address,
-                    BigInt(feeAmount),
-                    true,
-                    "Medium Fee",
-                    10
-                );
-
-                await this.deckMaster.setServiceFee(
                     this.Fevr.address,
-                    bigNum(300),
-                    true,
-                    "Low Fee",
-                    30  // 30%
-                );
+                    this.USDC.address,
+                ],
+                true
+            );
+            allowedTokens = await this.lendingMaster.getAllowedTokens();
+            expect(allowedTokens.length).to.be.equal(4);
+        });
 
-                let serviceFee = await this.deckMaster.getServiceFeeInfo(1);
-                expect (serviceFee.paymentToken).to.be.equal(this.DAI.address);
-                expect (smallNum(serviceFee.feeAmount)).to.be.equal(smallNum(feeAmount));
-                expect (serviceFee.active).to.be.equal(true);
-                expect (Number(serviceFee.burnPercent)).to.be.equal(10);
+        it("reverts if already added", async function () {
+            await expect(
+                this.lendingMaster.setAcceptableERC20([this.USDT.address], true)
+            ).to.be.revertedWith("already added");
+        });
 
-                serviceFee = await this.deckMaster.getServiceFeeInfo(2);
-                expect (serviceFee.paymentToken).to.be.equal(this.Fevr.address);
-                expect (smallNum(serviceFee.feeAmount)).to.be.equal(300);
-                expect (serviceFee.active).to.be.equal(true);
-                expect (Number(serviceFee.burnPercent)).to.be.equal(30);
-            })
-        })
+        it("remove token", async function () {
+            let beforeAllowedTokens =
+                await this.lendingMaster.getAllowedTokens();
+            await this.lendingMaster.setAcceptableERC20(
+                [this.USDC.address],
+                false
+            );
+            let afterAllowedTokens =
+                await this.lendingMaster.getAllowedTokens();
+            expect(
+                beforeAllowedTokens.length - afterAllowedTokens.length
+            ).to.be.equal(1);
+        });
 
-        describe ("Link service fee to collections", function () {
-            it ("reverts if caller is not the owner", async function () {
-                await expect (
-                    this.deckMaster.connect(this.user_1).linkServiceFee(1, this.collectionId.address)
+        it("reverts if already removed", async function () {
+            await expect(
+                this.lendingMaster.setAcceptableERC20(
+                    [this.USDC.address],
+                    false
+                )
+            ).to.be.revertedWith("already removed");
+        });
+    });
+
+    describe("setApprovedCollections", function () {
+        it("reverts if caller is not the owner", async function () {
+            await expect(
+                this.lendingMaster
+                    .connect(this.lender_1)
+                    .setApprovedCollections([], true)
+            ).to.be.revertedWith("Ownable: caller is not the owner");
+        });
+
+        it("reverts if array length is zero", async function () {
+            await expect(
+                this.lendingMaster.setApprovedCollections([], true)
+            ).to.be.revertedWith("invalid length array");
+        });
+
+        it("add acceptable collections", async function () {
+            let beforeCollections =
+                await this.lendingMaster.getAllowedCollections();
+            await this.lendingMaster.setApprovedCollections(
+                [
+                    this.collection_1.address,
+                    this.collection_2.address,
+                    this.collection_3.address,
+                ],
+                true
+            );
+            let afterCollections =
+                await this.lendingMaster.getAllowedCollections();
+            expect(
+                afterCollections.length - beforeCollections.length
+            ).to.be.equal(3);
+        });
+
+        it("reverts if already added", async function () {
+            await expect(
+                this.lendingMaster.setApprovedCollections(
+                    [this.collection_2.address],
+                    true
+                )
+            ).to.be.revertedWith("already added");
+        });
+
+        it("remove acceptable collection", async function () {
+            let beforeCollections =
+                await this.lendingMaster.getAllowedCollections();
+            await this.lendingMaster.setApprovedCollections(
+                [this.collection_3.address],
+                false
+            );
+            let afterCollections =
+                await this.lendingMaster.getAllowedCollections();
+            expect(
+                beforeCollections.length - afterCollections.length
+            ).to.be.equal(1);
+        });
+
+        it("reverts if already removed", async function () {
+            await expect(
+                this.lendingMaster.setApprovedCollections(
+                    [this.collection_3.address],
+                    false
+                )
+            ).to.be.revertedWith("already removed");
+        });
+    });
+
+    describe("setNLBundles", function () {
+        it("reverts if caller is not the owner", async function () {
+            await expect(
+                this.lendingMaster.connect(this.lender_1).setNLBundles([], true)
+            ).to.be.revertedWith("Ownable: caller is not the owner");
+        });
+
+        it("reverts if array length is zero", async function () {
+            await expect(
+                this.lendingMaster.setNLBundles([], true)
+            ).to.be.revertedWith("invalid length array");
+        });
+
+        it("add acceptable NLBundles", async function () {
+            let beforeNLBundles =
+                await this.lendingMaster.getAllowedNLBundles();
+            await this.lendingMaster.setNLBundles(
+                [
+                    this.NLBundle_1.address,
+                    this.NLBundle_2.address,
+                    this.NLBundle_3.address,
+                ],
+                true
+            );
+            let afterNLBundles = await this.lendingMaster.getAllowedNLBundles();
+            expect(afterNLBundles.length - beforeNLBundles.length).to.be.equal(
+                3
+            );
+        });
+
+        it("reverts if already added", async function () {
+            await expect(
+                this.lendingMaster.setNLBundles([this.NLBundle_1.address], true)
+            ).to.be.revertedWith("already added");
+        });
+
+        it("remove acceptable NLBundles", async function () {
+            let beforeNLBundles =
+                await this.lendingMaster.getAllowedNLBundles();
+            await this.lendingMaster.setNLBundles(
+                [this.NLBundle_3.address],
+                false
+            );
+            let afterNLBundles = await this.lendingMaster.getAllowedNLBundles();
+            expect(beforeNLBundles.length - afterNLBundles.length).to.be.equal(
+                1
+            );
+        });
+
+        it("reverts if already removed", async function () {
+            await expect(
+                this.lendingMaster.setNLBundles(
+                    [this.NLBundle_3.address],
+                    false
+                )
+            ).to.be.revertedWith("already removed");
+        });
+    });
+
+    describe("set service fee and link it to collection", function () {
+        describe("set service fee", function () {
+            it("reverts if caller is not the owner", async function () {
+                await expect(
+                    this.lendingMaster.connect(this.lender_1).setServiceFee(
+                        this.DAI.address,
+                        bigNum(10, 18),
+                        true,
+                        "DAI fee setting",
+                        100 // 10%
+                    )
                 ).to.be.revertedWith("Ownable: caller is not the owner");
-            })
+            });
 
-            it ("reverts if serviceFeeId is not valid", async function () {
-                let lastServiceFeeId = await this.deckMaster.serviceFeeId();
-                await expect (
-                    this.deckMaster.linkServiceFee(lastServiceFeeId + 3, this.collectionId.address)
-                ).to.be.revertedWith("invalid serviceFeeId");
-            })
-
-            it ("reverts if collection address is not allowlisted", async function () {
-                await expect (
-                    this.deckMaster.linkServiceFee(1, this.collectionId_1.address)
-                ).to.be.revertedWith("not acceptable collection address");
-            })
-
-            it ("link serviceFee to collection", async function () {
-                await expect (
-                    this.deckMaster.linkServiceFee(1, this.collectionId.address)
-                ).to.be.emit(this.deckMaster, "ServiceFeeLinked")
-                .withArgs(1, this.collectionId.address);
-            })
-
-            it ("reverts if serviceFee already linked", async function () {
-                await expect (
-                    this.deckMaster.linkServiceFee(1, this.collectionId.address)
-                ).to.be.revertedWith("already linked to a fee");
-            })
-
-            it ("link serviceFee to bundle", async function () {
-                await expect (
-                    this.deckMaster.linkServiceFee(2, this.bundleNFT.address)
-                ).to.be.emit(this.deckMaster, "ServiceFeeLinked")
-                .withArgs(2, this.bundleNFT.address);
-            })
-        })
-    })
-
-    describe ("deposit collections and bundles", function () {
-        describe ("deposit collections or bundles without setting deposit flag", function () {
-            describe ("deposit collections without setting deposit flag", function () {
-                it ("mint serverl collections to user_1", async function () {
-                    await this.collectionId.mint(this.user_1.address, 5);
-                })
-    
-                it ("reverts if deposit collection without setting deposit flag", async function () {
-                    await this.collectionId.connect(this.user_1).setApprovalForAll(this.deckMaster.address, true);
-                    await expect (
-                        this.deckMaster.depositCollections(
-                            this.collectionId.address,
-                            [1, 2, 3, 4, 5]
-                        )
-                    ).to.be.revertedWith("exceeds to max deposit limit");
-                })
-            })
-
-            describe ("deposit bundles without setting deposit flag", function () {
-                it ("mint bundleNFT to user_1", async function () {
-                    await this.collectionId.connect(this.user_1).setApprovalForAll(this.bundleNFT.address, true);
-                    await this.bundleNFT.connect(this.user_1).depositNFTs(
-                        [
-                            this.collectionId.address, 
-                            this.collectionId.address, 
-                            this.collectionId.address, 
-                            this.collectionId.address, 
-                            this.collectionId.address
-                        ],
-                        [1, 2, 3, 4, 5],
-                        "Bundle with 5 collections"
-                    );
-                })
-    
-                it ("reverts if deposit bundle without setting deposit flag", async function () {
-                    await this.bundleNFT.connect(this.user_1).setApprovalForAll(this.deckMaster.address, true);
-                    await expect (
-                        this.deckMaster.connect(this.user_1).depositBundle(this.bundleNFT.address, 1)
-                    ).to.be.revertedWith("exceeds to max deposit limit");
-                })
-            })
-        })
-
-        describe ("deposit collections", function () {
-            it ("set deposit flag", async function () {
-                await expect (
-                    this.deckMaster.setDepositFlag(
-                        this.collectionId.address,
-                        100
+            it("reverts if payment token is not allowed", async function () {
+                await expect(
+                    this.lendingMaster.setServiceFee(
+                        this.USDC.address,
+                        bigNum(10, 6),
+                        true,
+                        "USDC fee setting",
+                        100 // 10%
                     )
-                ).to.be.emit(this.deckMaster, "DepositFlagSet")
-                .withArgs(this.collectionId.address, 100);
-            })
+                ).to.be.revertedWith("token is not allowed");
+            });
 
-            describe ("deposit collections after set deposit flag and check deckLp", async function () {
-                it ("reverts if tokenIds length is zero", async function () {
-                    await expect (
-                        this.deckMaster.connect(this.user_1).depositCollections(
-                            this.collectionId.address,
-                            []
-                        )
-                    ).to.be.revertedWith("dismatched length");
-                })
-
-                it ("reverts if collection is not allowlisted", async function () {
-                    await expect (
-                        this.deckMaster.connect(this.user_1).depositCollections(
-                            this.collectionId_1.address,
-                            [1, 2, 3]
-                        )
-                    ).to.be.revertedWith("Not acceptable collection address");
-                })
-
-                it ("reverts if caller is not the collection owner", async function () {
-                    await expect (
-                        this.deckMaster.connect(this.user_2).depositCollections(
-                            this.collectionId.address,
-                            [1, 2, 3]
-                        )
-                    ).to.be.revertedWith("not Collection owner");
-                })
-
-                it ("deposit collections and check deckLp", async function () {
-                    /// mint collectionId to user_1
-                    await this.collectionId.mint(this.user_1.address, 7);
-
-                    /// deposit collections
-                    await this.collectionId.connect(this.user_1).setApprovalForAll(this.deckMaster.address, true);
-                    await expect (
-                        this.deckMaster.connect(this.user_1).depositCollections(
-                            this.collectionId.address,
-                            [6, 7, 8, 9, 10, 11, 12]
-                        )
-                    ).to.be.emit(this.deckMaster, "CollectionsDeposited")
-                    .withArgs(
-                        this.collectionId.address,
-                        [6, 7, 8, 9, 10, 11, 12],
-                        1
-                    );
-
-                    /// check deckLp balance and deckLp information
-                    expect (await this.deckMaster.balanceOf(this.user_1.address)).to.be.equal(1);
-                    await expect (
-                        this.deckMaster.getDeckLpInfo(1000)
-                    ).to.be.revertedWith("not exist deckLp id");
-                    let deckLpInfo = await this.deckMaster.getDeckLpInfo(1);
-                    expect (deckLpInfo.collectionAddress).to.be.equal(this.collectionId.address);
-                    expect (deckLpInfo.tokenIds.length).to.be.equal(7);
-                    expect (await this.deckMaster.getAllDeckCount()).to.be.equal(1);
-                })
-            })
-        })
-        
-        describe ("deposit bundle", function () {
-            it ("set deposit flag", async function () {
-                await expect (
-                    this.deckMaster.setDepositFlag(
-                        this.bundleNFT.address,
-                        10
+            it("reverts if burnPercent is over 100%", async function () {
+                await expect(
+                    this.lendingMaster.setServiceFee(
+                        this.DAI.address,
+                        bigNum(10, 18),
+                        true,
+                        "DAI fee setting",
+                        10000
                     )
-                ).to.be.emit(this.deckMaster, "DepositFlagSet")
-                .withArgs(this.bundleNFT.address, 10);
-            })
+                ).to.be.revertedWith("invalid burn percent");
+            });
 
-            it ("reverts if caller is not the bundle NFT owner", async function () {
-                await expect (
-                    this.deckMaster.depositBundle(this.bundleNFT.address, 1)
-                ).to.be.revertedWith("not Collection owner");
-            })
-
-            it ("reverts if bundle NFT is not allowlisted", async function () {
-                await this.collectionId_1.mint(this.user_1.address, 1);
-                await expect (
-                    this.deckMaster.connect(this.user_1).depositBundle(this.collectionId_1.address, 1)
-                ).to.be.revertedWith("Not acceptable bundle address");
-            })
-            
-            it ("reverts if bundle doesn't have certain collection amount", async function () {
-                await this.bundleNFT.connect(this.user_1).setApprovalForAll(this.deckMaster.address, true);
-                await expect (
-                    this.deckMaster.connect(this.user_1).depositBundle(this.bundleNFT.address, 1)
-                ).to.be.revertedWith("Bundle should have certain collections");
-            })
-
-            it ("deposit bundle with certain collection amount and check deckLp", async function () {
-                /// mint 50 collectionIds to user_1
-                await this.collectionId.mint(this.user_1.address, 50);
-                let lastTokenId = 13;
-                let tokenIds = [];
-                let tokenAddrs = [];
-                for (let i = lastTokenId; i < lastTokenId + 50; i ++) {
-                    tokenIds.push(i);
-                    tokenAddrs.push(this.collectionId.address);
-                }
-
-                await this.collectionId.connect(this.user_1).setApprovalForAll(this.bundleNFT.address, true);
-                await this.bundleNFT.connect(this.user_1).depositNFTs(tokenAddrs, tokenIds, "First Bundle with 50 collections");
-
-                // deposit bundle and check deckLp
-                await this.bundleNFT.connect(this.user_1).setApprovalForAll(this.deckMaster.address, true);
-                await expect (
-                    this.deckMaster.connect(this.user_1).depositBundle(this.bundleNFT.address, 2)
-                ).to.be.emit(this.deckMaster, "BundleDeposited")
-                .withArgs(this.bundleNFT.address, 2, 2);
-
-                let deckLpInfo = await this.deckMaster.getDeckLpInfo(2);
-                expect (deckLpInfo.collectionAddress).to.be.equal(this.bundleNFT.address);
-                expect (deckLpInfo.tokenIds.length).to.be.equal(1);
-                expect (await this.deckMaster.getAllDeckCount()).to.be.equal(2);
-                expect (deckLpInfo.tokenIds[0]).to.be.equal(2);
-            })
-        })        
-    })  
-
-    describe ("withdraw collections and bundles", function () {
-        describe ("withdraw collections", function () {
-            it ("reverts if caller is not the deckLp owner", async function () {
-                await expect (
-                    this.deckMaster.connect(this.user_2).withdrawCollections(1)
-                ).to.be.revertedWith("not deckLp owner");
-            })
-
-            it ("withdraw collections with deckLp and check deckLp is burn", async function () {
-                let beforeBal = await this.collectionId.balanceOf(this.user_1.address);
-                await expect (
-                    this.deckMaster.connect(this.user_1).withdrawCollections(1)
-                ).to.be.emit(this.deckMaster, "Withdraw")
-                .withArgs(this.user_1.address, 1);
-                let afterBal = await this.collectionId.balanceOf(this.user_1.address);
-
-                expect (await this.deckMaster.getAllDeckCount()).to.be.equal(1);
-                expect (await this.deckMaster.balanceOf(this.user_1.address)).to.be.equal(1);
-                expect (afterBal - beforeBal).to.be.equal(7);
-            })
-        })
-
-        describe ("withdraw bundle", function () {
-            it ("withdraw bundle with deckLp and check deckLp is burn", async function () {
-                let beforeBal = await this.bundleNFT.balanceOf(this.user_1.address);
-                await expect (
-                    this.deckMaster.connect(this.user_1).withdrawCollections(2)
-                ).to.be.emit(this.deckMaster, "Withdraw")
-                .withArgs(this.user_1.address, 2);
-                let afterBal = await this.bundleNFT.balanceOf(this.user_1.address);
-
-                expect (await this.deckMaster.getAllDeckCount()).to.be.equal(0);
-                expect (await this.deckMaster.balanceOf(this.user_1.address)).to.be.equal(0);
-                expect (afterBal - beforeBal).to.be.equal(1);
-            })
-        })
-    })
-
-    describe ("lend and borrow collections", function () {
-        describe ("deposit collections and bundles for lending", function () {
-            it ("deposit collections", async function () {
-                await this.collectionId.connect(this.user_1).setApprovalForAll(this.deckMaster.address, true);
-                await expect (
-                    this.deckMaster.connect(this.user_1).depositCollections(
-                        this.collectionId.address,
-                        [6, 7, 8, 9, 10, 11, 12]
-                    )
-                ).to.be.emit(this.deckMaster, "CollectionsDeposited")
-                .withArgs(
-                    this.collectionId.address,
-                    [6, 7, 8, 9, 10, 11, 12],
-                    3
-                );
-                expect (await this.deckMaster.getAllDeckCount()).to.be.equal(1);
-            })
-
-            it ("deposit bundle", async function () {
-                await this.bundleNFT.connect(this.user_1).setApprovalForAll(this.deckMaster.address, true);
-                await expect (
-                    this.deckMaster.connect(this.user_1).depositBundle(this.bundleNFT.address, 2)
-                ).to.be.emit(this.deckMaster, "BundleDeposited")
-                .withArgs(this.bundleNFT.address, 2, 4);
-                expect (await this.deckMaster.getAllDeckCount()).to.be.equal(2);
-            })
-        })
-
-        describe ("list lend with deckLp", function () {
-            it ("reverts if lending duration is zero", async function () {
-                await expect (
-                    this.deckMaster.connect(this.user_1).lend(
-                        this.USDT.address,
-                        1,
-                        bigNum_6(100),
-                        bigNum_6(50),
+            it("reverts if feeAmount is zero", async function () {
+                await expect(
+                    this.lendingMaster.setServiceFee(
+                        this.DAI.address,
                         0,
                         true,
-                        {
-                            lenderRate: 300,
-                            borrowerRate: 500,
-                            burnRate: 200 
-                        }
+                        "DAI fee setting",
+                        100 // 10%
                     )
-                ).to.be.revertedWith("invalid lend duration");
-            })
-            it ("reverts if caller is not the deckLp owner", async function () {
-                await expect (
-                    this.deckMaster.connect(this.user_2).lend(
-                        this.USDT.address,
-                        3,
-                        bigNum_6(100),
-                        bigNum_6(50),
-                        10,
-                        true,
-                        {
-                            lenderRate: 300,
-                            borrowerRate: 500,
-                            burnRate: 200 
-                        }
-                    )
-                ).to.be.revertedWith("not deckLp owner");
-            })
+                ).to.be.revertedWith("invalid feeAmount");
+            });
 
-            it ("reverts if try to lend with invalid prepay information", async function () {
-                await expect (
-                    this.deckMaster.connect(this.user_1).lend(
-                        this.USDT.address,
-                        3,
-                        bigNum_6(100),
-                        bigNum_6(50),
-                        10,
-                        false,
-                        {
-                            lenderRate: 300,
-                            borrowerRate: 500,
-                            burnRate: 200 
-                        }
-                    )
-                ).to.be.revertedWith("invalid prepay amount");
-            })
-
-            it ("reverts if winning distribution is over 100%", async function () {
-                await expect (
-                    this.deckMaster.connect(this.user_1).lend(
-                        this.USDT.address,
-                        3,
-                        bigNum_6(100),
-                        bigNum_6(50),
-                        10,
-                        true,
-                        {
-                            lenderRate: 700,
-                            borrowerRate: 500,
-                            burnRate: 200 
-                        }
-                    )
-                ).to.be.revertedWith("invalid winning distribution");
-            })
-
-            it ("list lend with deckLpId and check lend infos", async function () {
-                await expect (
-                    this.deckMaster.connect(this.user_1).lend(
-                        this.USDT.address,
-                        3,
-                        bigNum_6(100),
-                        bigNum_6(50),
-                        10,
-                        true,
-                        {
-                            lenderRate: 300,
-                            borrowerRate: 500,
-                            burnRate: 200 
-                        }
-                    )
-                ).to.be.emit(this.deckMaster, "Lend")
-                .withArgs(
-                    this.user_1.address,
-                    3
+            it("setServiceFee", async function () {
+                await this.lendingMaster.setServiceFee(
+                    this.DAI.address,
+                    bigNum(10, 18),
+                    true,
+                    "DAI fee setting",
+                    100 // 10%
                 );
 
-                /// check lend infos
-                let lendInfo = await this.serviceManager.getLendInfo(3);
-                expect (lendInfo.lender).to.be.equal(this.user_1.address);
-                expect (lendInfo.borrower).to.be.equal(constants.ZERO_ADDRESS);
-                expect (lendInfo.paymentToken).to.be.equal(this.USDT.address);
-                expect (smallNum_6(lendInfo.dailyInterest)).to.be.equal(100);
-            })
-        })
+                let serviceFeeInfo = await this.lendingMaster.serviceFees(1);
+                expect(serviceFeeInfo.paymentToken).to.be.equal(
+                    this.DAI.address
+                );
+                expect(smallNum(serviceFeeInfo.feeAmount, 18)).to.be.equal(10);
+                expect(await this.lendingMaster.serviceFeeId()).to.be.equal(2);
+            });
+        });
 
-        describe ("borrow", function () {
-            it ("reverts if try to borrow not exist deckLp", async function () {
-                await expect (
-                    this.deckMaster.borrow(1000)
-                ).to.be.revertedWith("not exists deckLp id");
-            })
+        describe("linkServiceFee", function () {
+            it("reverts if caller is not the owner", async function () {
+                await expect(
+                    this.lendingMaster
+                        .connect(this.lender_1)
+                        .linkServiceFee(1, this.collection_1.address)
+                ).to.be.revertedWith("Ownable: caller is not the owner");
+            });
 
-            it ("reverts if caller is deckLp owner", async function () {
-                await expect (
-                    this.deckMaster.connect(this.user_1).borrow(3)
-                ).to.be.revertedWith("caller is deckLp owner");
-            })
+            it("reverts if serviceFeeId is invalid", async function () {
+                await expect(
+                    this.lendingMaster.linkServiceFee(
+                        100,
+                        this.collection_1.address
+                    )
+                ).to.be.revertedWith("invalid serviceFeeId");
+            });
 
-            it ("reverts if not enough balance for service fee", async function () {
-                await expect (
-                    this.deckMaster.connect(this.user_2).borrow(4)
-                ).to.be.revertedWith("not enough balance for serviceFee");
-            })
+            it("reverts if collection is not acceptable", async function () {
+                await expect(
+                    this.lendingMaster.linkServiceFee(
+                        1,
+                        this.collection_3.address
+                    )
+                ).to.be.revertedWith("not acceptable collection address");
+            });
 
-            it ("reverts if not enough balance for prepay", async function () {
-                await this.DAI.transfer(this.user_2.address, bigNum(20));
-                await this.DAI.connect(this.user_2).approve(this.deckMaster.address, bigNum(10));
-                await expect (
-                    this.deckMaster.connect(this.user_2).borrow(3)
-                ).to.be.revertedWith("not enough balance for prepay");
-            })
+            it("linkServiceFee", async function () {
+                await this.lendingMaster.linkServiceFee(
+                    1,
+                    this.collection_1.address
+                );
+            });
 
-            it ("reverts if not enough balance for interest", async function () {
-                let prepay = bigNum_6(50);
-                await this.USDT.transfer(this.user_2.address, BigInt(prepay));
-                await this.USDT.connect(this.user_2).approve(this.deckMaster.address, BigInt(prepay));
-                await expect (
-                    this.deckMaster.connect(this.user_2).borrow(3)
-                ).to.be.revertedWith("not enough balance for interest");
-            })
+            it("reverts if serviceFee is already linked", async function () {
+                await expect(
+                    this.lendingMaster.linkServiceFee(
+                        1,
+                        this.collection_1.address
+                    )
+                ).to.be.revertedWith("already linked to a fee");
+            });
+        });
+    });
 
-            describe ("buyback", function () {
-                it ("set buyback fee", async function () {
-                    await this.deckMaster.setBuybackFee(
-                        this.DAI.address,
-                        100  // 10%
-                    );
+    describe("configAmountForBundle", function () {
+        it("reverts if caller is not the owner", async function () {
+            await expect(
+                this.lendingMaster
+                    .connect(this.lender_1)
+                    .configAmountForBundle(1, 2)
+            ).to.be.revertedWith("Ownable: caller is not the owner");
+        });
 
-                    await this.deckMaster.buybackFeeTake(
-                        this.DAI.address,
-                        true
-                    );
+        it("reverts minAmount and maxAmount are invalid", async function () {
+            await expect(
+                this.lendingMaster.configAmountForBundle(0, 20)
+            ).to.be.revertedWith("invalid config amount");
+        });
+
+        it("configAmountForBundle", async function () {
+            await this.lendingMaster.configAmountForBundle(2, 20);
+        });
+    });
+
+    describe("setDepositFlag", function () {
+        let depositLimit = { minAmount: 2, maxAmount: 20 };
+        it("reverts if caller is not the owner", async function () {
+            await expect(
+                this.lendingMaster
+                    .connect(this.lender_1)
+                    .setDepositFlag(this.collection_1.address, depositLimit)
+            ).to.be.revertedWith("Ownable: caller is not the owner");
+        });
+
+        it("reverts if collection is not approved", async function () {
+            await expect(
+                this.lendingMaster.setDepositFlag(
+                    this.collection_3.address,
+                    depositLimit
+                )
+            ).to.be.revertedWith("not acceptable collection address");
+        });
+
+        it("reverts if depositLimit is invalid", async function () {
+            await expect(
+                this.lendingMaster.setDepositFlag(this.collection_1.address, {
+                    minAmount: 100,
+                    maxAmount: 20,
                 })
+            ).to.be.revertedWith("invalid config amount");
+        });
 
-                it ("brrow without buyback fee and check receipt deckLp, serviceFee and offerLend", async function () {
-                    let serviceFeeAmount = bigNum(10);
-                    await this.DAI.connect(this.user_2).approve(this.deckMaster.address, BigInt(serviceFeeAmount));
+        it("setDepositFlag", async function () {
+            await this.lendingMaster.setDepositFlag(
+                this.collection_1.address,
+                depositLimit
+            );
+            await this.lendingMaster.setDepositFlag(
+                this.NLBundle_1.address,
+                depositLimit
+            );
+        });
+    });
 
-                    let prepay = bigNum_6(50);
-                    let interests = bigNum_6(1000);
-                    await this.USDT.transfer(this.user_2.address, BigInt(interests));
-                    let totalRequireAmount = BigInt(prepay) + BigInt(interests);
-                    await this.USDT.connect(this.user_2).approve(this.deckMaster.address, 0);
-                    await this.USDT.connect(this.user_2).approve(this.deckMaster.address, BigInt(totalRequireAmount));
-                    let beforeBal = await this.Fevr.balanceOf(this.deckMaster.address);
-                    await expect (
-                        this.deckMaster.connect(this.user_2).borrow(3)
-                    ).to.be.emit(this.deckMaster, "Borrow")
-                    .withArgs(this.user_2.address, 5);
-                    let afterBal = await this.Fevr.balanceOf(this.deckMaster.address);
-
-                    // check buyback
-                    let burnRate = 10;
-                    let burnAmount = BigInt(serviceFeeAmount) * BigInt(burnRate) / BigInt(1000);
-                    let buybackAmount = BigInt(serviceFeeAmount) - BigInt(burnAmount);
-
-                    let WETH = await this.dexRouter.WETH();
-                    let amounts = await this.dexRouter.getAmountsOut(BigInt(buybackAmount), [this.DAI.address, WETH, this.Fevr.address]);
-                    let expectFevrAmount = amounts[2];
-                    let buybackFeeAmount = BigInt(expectFevrAmount) * BigInt(100) / BigInt(1000);
-
-                    expect (smallNum(afterBal) - smallNum(beforeBal)).to.be.closeTo(smallNum(buybackFeeAmount), 0.1);
-                    expect (smallNum_6(await this.deckMaster.getLockedERC20(this.USDT.address))).to.be.equal(1000);
-
-                    /// check receipt deckLp info
-                    expect (await this.deckMaster.balanceOf(this.user_2.address)).to.be.equal(1);
-                    let [
-                        lender, 
-                        borrower, 
-                        , , , , 
-                    ] = await this.deckMaster.getReceiptDeckLpInfo(5);
-                    expect (lender).to.be.equal(this.user_1.address);
-                    expect (borrower).to.be.equal(this.user_2.address);
-                })
-            })
-        })
-
-        describe ("winning distribution", function () {
-            it ("reverts if caller is not the owner", async function () {
-                await expect (
-                    this.deckMaster.connect(this.user_1).winningCalculation(
-                        3, 
-                        bigNum(100),
-                        [1, 2, 3]
+    describe("set buybackFee settings", function () {
+        describe("setBuybackFee", function () {
+            it("reverts if caller is not the owner", async function () {
+                await expect(
+                    this.lendingMaster.connect(this.lender_1).setBuybackFee(
+                        this.DAI.address,
+                        200 // 20%
                     )
                 ).to.be.revertedWith("Ownable: caller is not the owner");
-            })
+            });
 
-            it ("reverts if deckLp is receipt deckLp", async function () {
-                await expect (
-                    this.deckMaster.winningCalculation(
-                        5, 
-                        bigNum(100),
-                        [1, 2, 3]
+            it("reverts if token is not allowed", async function () {
+                await expect(
+                    this.lendingMaster.setBuybackFee(this.USDC.address, 20)
+                ).to.be.revertedWith("token is not allowed");
+            });
+
+            it("reverts if buybackFee rate is zero", async function () {
+                await expect(
+                    this.lendingMaster.setBuybackFee(this.DAI.address, 0)
+                ).to.be.revertedWith("invalid buybackFee rate");
+            });
+
+            it("setBuybackFee", async function () {
+                await this.lendingMaster.setBuybackFee(this.DAI.address, 100);
+                await this.lendingMaster.setBuybackFee(this.USDT.address, 150);
+            });
+        });
+
+        describe("buybackFeeTake", function () {
+            it("reverts if caller is not the owner", async function () {
+                await expect(
+                    this.lendingMaster
+                        .connect(this.lender_1)
+                        .buybackFeeTake(this.DAI.address, true)
+                ).to.be.revertedWith("Ownable: caller is not the owner");
+            });
+
+            it("reverts if token is not allowed", async function () {
+                await expect(
+                    this.lendingMaster.buybackFeeTake(this.USDC.address, true)
+                ).to.be.revertedWith("token is not allowed");
+            });
+
+            it("reverts if buybackFee rate is zero", async function () {
+                await expect(
+                    this.lendingMaster.buybackFeeTake(this.Fevr.address, true)
+                ).to.be.revertedWith("buybackFee rate is not set");
+            });
+
+            it("buybackFeeTake", async function () {
+                await this.lendingMaster.setBuybackFee(this.Fevr.address, 200);
+                await this.lendingMaster.buybackFeeTake(
+                    this.Fevr.address,
+                    true
+                );
+                await this.lendingMaster.buybackFeeTake(this.DAI.address, true);
+                await this.lendingMaster.buybackFeeTake(
+                    this.USDT.address,
+                    true
+                );
+            });
+        });
+    });
+
+    describe("deposit collection and NLBundle", function () {
+        it("mint collections and NLBundles", async function () {
+            await this.collection_1.mint(this.lender_1.address, 100);
+            await this.collection_2.mint(this.lender_1.address, 100);
+            await this.collection_2.mint(this.lender_2.address, 10);
+
+            let depositIds = [];
+            let depositAddr_1 = [];
+            let depositAddr_2 = [];
+            for (let i = 1; i <= 50; i++) {
+                depositIds.push(i);
+                depositAddr_1.push(this.collection_1.address);
+                depositAddr_2.push(this.collection_2.address);
+            }
+            await this.collection_1
+                .connect(this.lender_1)
+                .setApprovalForAll(this.NLBundle_1.address, true);
+            await this.collection_1
+                .connect(this.lender_1)
+                .setApprovalForAll(this.NLBundle_2.address, true);
+            await this.collection_2
+                .connect(this.lender_1)
+                .setApprovalForAll(this.NLBundle_1.address, true);
+            await this.collection_2
+                .connect(this.lender_1)
+                .setApprovalForAll(this.NLBundle_2.address, true);
+            await this.NLBundle_1.connect(this.lender_1).depositNFTs(
+                depositAddr_1,
+                depositIds,
+                "First NLBundle"
+            );
+            await this.NLBundle_2.connect(this.lender_1).depositNFTs(
+                depositAddr_2,
+                depositIds,
+                "Second NLBundle"
+            );
+
+            let depositIds_1 = [];
+            delete depositAddr_1;
+            delete depositAddr_2;
+            depositAddr_1 = [];
+            depositAddr_2 = [];
+            for (let i = 51; i <= 60; i++) {
+                depositIds_1.push(i);
+                depositAddr_1.push(this.collection_1.address);
+                depositAddr_2.push(this.collection_2.address);
+            }
+            await this.NLBundle_1.connect(this.lender_1).depositNFTs(
+                depositAddr_1,
+                depositIds_1,
+                "First NLBundle"
+            );
+            await this.NLBundle_2.connect(this.lender_1).depositNFTs(
+                depositAddr_2,
+                depositIds_1,
+                "Second NLBundle"
+            );
+        });
+
+        describe("deposit collection", function () {
+            it("reverts if array length is zero", async function () {
+                await expect(
+                    this.lendingMaster
+                        .connect(this.lender_1)
+                        .depositCollection([], [], false)
+                ).to.be.revertedWith("invalid length array");
+            });
+
+            it("reverts array length is mismatch", async function () {
+                await expect(
+                    this.lendingMaster.depositCollection(
+                        [this.collection_1.address],
+                        [],
+                        false
                     )
-                ).to.be.revertedWith("this deckLp is receipt deckLp");
-            })
+                ).to.be.revertedWith("mismatch length array");
+            });
 
-            it ("set winningCalculation and check burn token and claimable token amount", async function () {
-                let totalWinnings = bigNum(10000);
-                await this.Fevr.transfer(this.deckMaster.address, BigInt(totalWinnings));
-                let beforeBal = await this.Fevr.balanceOf(this.deckMaster.address);
-                await expect (
-                    this.deckMaster.winningCalculation(
-                        3, 
-                        BigInt(totalWinnings),
-                        [1, 2, 3]
+            it("reverts if collection is not allowed", async function () {
+                await expect(
+                    this.lendingMaster.depositCollection(
+                        [this.collection_3.address],
+                        [1],
+                        false
                     )
-                ).to.be.emit(this.deckMaster, "WinningRewardsSet")
-                .withArgs(3, [1, 2, 3], BigInt(totalWinnings));
-                let afterBal = await this.Fevr.balanceOf(this.deckMaster.address);
+                ).to.be.revertedWith("not allowed collection");
+            });
 
-                let lenderRate = 300;
-                let borrowerRate = 500;
-                let burnRate = 200 ;
+            it("reverts if collection owner is not caller", async function () {
+                await expect(
+                    this.lendingMaster
+                        .connect(this.lender_2)
+                        .depositCollection(
+                            [this.collection_1.address],
+                            [1],
+                            false
+                        )
+                ).to.be.revertedWith("not collection owner");
+            });
 
-                let lenderAmount = BigInt(totalWinnings) * BigInt(lenderRate) / BigInt(1000);
-                let borrowerAmount = BigInt(totalWinnings) * BigInt(borrowerRate) / BigInt(1000);
-                let burnAmount = BigInt(totalWinnings) * BigInt(burnRate) / BigInt(1000);
+            // it("reverts deposit limit exceeds", async function () {
+            //     let depositIds = [];
+            //     let collectionAddr = [];
+            //     for (let i = 61; i <= 100; i++) {
+            //         depositIds.push(i);
+            //         collectionAddr.push(this.collection_1.address);
+            //     }
 
-                expect (smallNum(await this.deckMaster.claimableAmount(this.user_1.address, 3))).to.be.closeTo(smallNum(lenderAmount), 0.1);
-                expect (smallNum(await this.deckMaster.claimableAmount(this.user_2.address, 3))).to.be.closeTo(smallNum(borrowerAmount), 0.1);
-                expect (smallNum(beforeBal) - smallNum(afterBal)).to.be.closeTo(smallNum(burnAmount), 0.1);
-            })
+            //     await this.collection_1
+            //         .connect(this.lender_1)
+            //         .setApprovalForAll(this.lendingMaster.address, true);
+            //     await expect(
+            //         this.lendingMaster
+            //             .connect(this.lender_1)
+            //             .depositCollection(collectionAddr, depositIds, false)
+            //     ).to.be.revertedWith("exceeds to max deposit limit");
+            // });
 
-            describe ("claim winning rewards", function () {
-                it ("reverts if deckLpId is receipt deckLp", async function () {
-                    await expect (
-                        this.deckMaster.claimWinnings(5)
-                    ).to.be.revertedWith("this deckLp is receipt deckLp");
-                })
+            it("deposit collections", async function () {
+                let depositIds = [];
+                let collectionAddr = [];
+                for (let i = 61; i <= 70; i++) {
+                    depositIds.push(i);
+                    collectionAddr.push(this.collection_1.address);
+                }
 
-                it ("reverts if caller is not the owner or lender", async function () {
-                    await expect (
-                        this.deckMaster.connect(this.user_3).claimWinnings(3)
-                    ).to.be.revertedWith("caller is not lender or borrower");
-                })
+                await this.collection_1
+                    .connect(this.lender_1)
+                    .setApprovalForAll(this.lendingMaster.address, true);
 
-                it ("claim winning rewards and check balance", async function () {
-                    let expectAmount = await this.deckMaster.claimableAmount(this.user_1.address, 3);
-                    let beforeBal = await this.Fevr.balanceOf(this.user_1.address);
-                    await expect (
-                        this.deckMaster.connect(this.user_1).claimWinnings(3)
-                    ).to.be.emit(this.deckMaster, "WinningRewardsClaimed")
-                    .withArgs(this.user_1.address, 3);
-                    let afterBal = await this.Fevr.balanceOf(this.user_1.address);
-                    expect (smallNum(afterBal) - smallNum(beforeBal)).to.be.closeTo(smallNum(expectAmount), 0.1);
-                })
+                let beforeBal = await this.collection_1.balanceOf(
+                    this.lender_1.address
+                );
+                let beforeDeckId = await this.lendingMaster.depositId();
+                let beforeDepositedIds =
+                    await this.lendingMaster.getUserDepositedIds(
+                        this.lender_1.address
+                    );
+                await this.lendingMaster
+                    .connect(this.lender_1)
+                    .depositCollection(collectionAddr, depositIds, false);
+                let afterDeckId = await this.lendingMaster.depositId();
+                let afterDepositedIds =
+                    await this.lendingMaster.getUserDepositedIds(
+                        this.lender_1.address
+                    );
+                let afterBal = await this.collection_1.balanceOf(
+                    this.lender_1.address
+                );
+                expect(Number(afterDeckId) - Number(beforeDeckId)).to.be.equal(
+                    10
+                );
+                expect(
+                    afterDepositedIds.length - beforeDepositedIds.length
+                ).to.be.equal(Number(afterDeckId) - Number(beforeDeckId));
+                expect(Number(beforeBal) - Number(afterBal)).to.be.equal(10);
 
-                it ("reverts if no claimable rewards", async function () {
-                    await expect (
-                        this.deckMaster.connect(this.user_1).claimWinnings(3)
-                    ).to.be.revertedWith("no claimable winning rewards");
-                })
-            })
-        })
+                await this.lendingMaster.setDepositFlag(
+                    this.collection_2.address,
+                    { minAmount: 2, maxAmount: 20 }
+                );
+                await this.collection_2
+                    .connect(this.lender_2)
+                    .setApprovalForAll(this.lendingMaster.address, true);
+                await this.lendingMaster
+                    .connect(this.lender_2)
+                    .depositCollection(
+                        [this.collection_2.address, this.collection_2.address],
+                        [101, 102],
+                        false
+                    );
+            });
+        });
 
-        describe ("claim interests", function () {
-            it ("reverts if try to claim with receipt deckLp id", async function () {
-                await expect (
-                    this.deckMaster.claimInterest(5)
-                ).to.be.revertedWith("this deckLp is receipt deckLp");
-            })
+        describe("deposit NLBundle", function () {
+            it("reverts if NLBundle is not approved", async function () {
+                await expect(
+                    this.lendingMaster
+                        .connect(this.lender_1)
+                        .depositNLBundle(this.NLBundle_3.address, 1)
+                ).to.be.revertedWith("not allowed bundle");
+            });
 
-            it ("reverts if deckLpId is not lent deckLpId", async function () {
-                await expect (
-                    this.deckMaster.claimInterest(4)
-                ).to.be.revertedWith("this deck is not lent deckLp");
-            })
+            it("reverts if NLBundle owner is not caller", async function () {
+                await expect(
+                    this.lendingMaster
+                        .connect(this.lender_2)
+                        .depositNLBundle(this.NLBundle_1.address, 1)
+                ).to.be.revertedWith("not bundle owner");
+            });
 
-            it ("reverts if caller is not the lender", async function () {
-                await expect (
-                    this.deckMaster.claimInterest(3)
-                ).to.be.revertedWith("not lender");
-            })
+            it("reverts if bundle contains collection amount is over max amount", async function () {
+                await expect(
+                    this.lendingMaster
+                        .connect(this.lender_1)
+                        .depositNLBundle(this.NLBundle_1.address, 1)
+                ).to.be.revertedWith("exceeds to depositLimitation");
+            });
 
-            it ("reverts if try to claim rewards before maturity", async function () {
-                await expect (
-                    this.deckMaster.connect(this.user_1).claimInterest(3)
-                ).to.be.revertedWith("can not claim interest in lend duration");
-            })
+            it("deposit NLBundle", async function () {
+                await this.NLBundle_1.connect(this.lender_1).setApprovalForAll(
+                    this.lendingMaster.address,
+                    true
+                );
+                let beforeBal = await this.NLBundle_1.balanceOf(
+                    this.lender_1.address
+                );
+                await this.lendingMaster
+                    .connect(this.lender_1)
+                    .depositNLBundle(this.NLBundle_1.address, 2);
+                let afterBal = await this.NLBundle_1.balanceOf(
+                    this.lender_1.address
+                );
+                expect(Number(beforeBal) - Number(afterBal)).to.be.equal(1);
+            });
 
-            it ("claim interests and check receipt deckLp is burn", async function () {
-                /// spend time
-                await spendTime(12 * day);
-                let expectInterestAmount = await this.deckMaster.getLockedERC20(this.USDT.address);
-                expect (await this.deckMaster.balanceOf(this.user_2.address)).to.be.equal(1);
-                let beforeBal = await this.USDT.balanceOf(this.user_1.address);
-                await expect (
-                    this.deckMaster.connect(this.user_1).claimInterest(3)
-                ).to.be.emit(this.deckMaster, "InterestClaimed")
-                .withArgs(this.user_1.address, BigInt(expectInterestAmount));
-                let afterBal = await this.USDT.balanceOf(this.user_1.address);
-                expect (smallNum_6(afterBal) - smallNum_6(beforeBal)).to.be.closeTo(smallNum_6(expectInterestAmount), 0.001);
-                expect (smallNum_6(await this.deckMaster.getLockedERC20(this.USDT.address))).to.be.equal(0);
-                expect (await this.deckMaster.balanceOf(this.user_2.address)).to.be.equal(0);
-            })
-        })
-    })
-})
+            it("reverts if deposit limit exceeds", async function () {
+                await expect(
+                    this.lendingMaster
+                        .connect(this.lender_1)
+                        .depositNLBundle(this.NLBundle_2.address, 2)
+                ).to.be.revertedWith("exceeds to depositLimitation");
+            });
+        });
+    });
+
+    describe("lend & borrow single collection and NLBundle", function () {
+        describe("lend single collection and NLBundle", function () {
+            describe("lend single deck", function () {
+                let depositedIds;
+                it("reverts if array length is zero", async function () {
+                    await expect(
+                        this.lendingMaster.connect(this.lender_1).lend([], [])
+                    ).to.be.revertedWith("invalid length array");
+                });
+
+                it("revers if array length is mismatch", async function () {
+                    depositedIds = await this.lendingMaster.getUserDepositedIds(
+                        this.lender_1.address
+                    );
+                    await expect(
+                        this.lendingMaster
+                            .connect(this.lender_1)
+                            .lend([depositedIds[0]], [])
+                    ).to.be.revertedWith("mismatch length array");
+                });
+
+                it("reverts if caller is not deck owner", async function () {
+                    await expect(
+                        this.lendingMaster.connect(this.lender_2).lend(
+                            [depositedIds[0]],
+                            [
+                                {
+                                    paymentToken: this.DAI.address,
+                                    prepayAmount: bigNum(30, 18),
+                                    lendDuration: 7,
+                                    winningRateForLender: 300,
+                                    winningRateForBorrower: 200,
+                                    gameFee: 0,
+                                    prepay: true,
+                                },
+                            ]
+                        )
+                    ).to.be.revertedWith("not deck owner");
+                });
+
+                it("reverts if payment token is not allowed", async function () {
+                    await expect(
+                        this.lendingMaster.connect(this.lender_1).lend(
+                            [depositedIds[0]],
+                            [
+                                {
+                                    paymentToken: this.USDC.address,
+                                    prepayAmount: bigNum(30, 18),
+                                    lendDuration: 7,
+                                    winningRateForLender: 300,
+                                    winningRateForBorrower: 200,
+                                    gameFee: 0,
+                                    prepay: true,
+                                },
+                            ]
+                        )
+                    ).to.be.revertedWith("token is not allowed");
+                });
+
+                it("reverts if winningRate is invalid", async function () {
+                    await expect(
+                        this.lendingMaster.connect(this.lender_1).lend(
+                            [depositedIds[0]],
+                            [
+                                {
+                                    paymentToken: this.DAI.address,
+                                    prepayAmount: bigNum(30, 18),
+                                    lendDuration: 7,
+                                    winningRateForLender: 800,
+                                    winningRateForBorrower: 200,
+                                    gameFee: 0,
+                                    prepay: true,
+                                },
+                            ]
+                        )
+                    ).to.be.revertedWith("invalid winningRate");
+                });
+
+                it("reverts if lendDuration is zero", async function () {
+                    await expect(
+                        this.lendingMaster.connect(this.lender_1).lend(
+                            [depositedIds[0]],
+                            [
+                                {
+                                    paymentToken: this.DAI.address,
+                                    prepayAmount: bigNum(30, 18),
+                                    lendDuration: 0,
+                                    winningRateForLender: 300,
+                                    winningRateForBorrower: 200,
+                                    gameFee: 0,
+                                    prepay: true,
+                                },
+                            ]
+                        )
+                    ).to.be.revertedWith("invalid lendDuration");
+                });
+
+                it("reverts if prepay setting is incorrect", async function () {
+                    await expect(
+                        this.lendingMaster.connect(this.lender_1).lend(
+                            [depositedIds[0]],
+                            [
+                                {
+                                    paymentToken: this.DAI.address,
+                                    prepayAmount: bigNum(30, 18),
+                                    lendDuration: 7,
+                                    winningRateForLender: 300,
+                                    winningRateForBorrower: 200,
+                                    gameFee: 0,
+                                    prepay: false,
+                                },
+                            ]
+                        )
+                    ).to.be.revertedWith("invalid prepay settings");
+                });
+
+                it("lend single deck", async function () {
+                    let beforeIds = await this.lendingMaster.getUserListedIds(
+                        this.lender_1.address
+                    );
+                    let beforeNotListedIds =
+                        await this.lendingMaster.getUserNotListedIds(
+                            this.lender_1.address
+                        );
+                    await this.lendingMaster.connect(this.lender_1).lend(
+                        [depositedIds[0]],
+                        [
+                            {
+                                paymentToken: this.DAI.address,
+                                prepayAmount: bigNum(30, 18),
+                                lendDuration: 7,
+                                winningRateForLender: 300,
+                                winningRateForBorrower: 200,
+                                gameFee: 0,
+                                prepay: true,
+                            },
+                        ]
+                    );
+                    let afterIds = await this.lendingMaster.getUserListedIds(
+                        this.lender_1.address
+                    );
+                    let afterNotListedIds =
+                        await this.lendingMaster.getUserNotListedIds(
+                            this.lender_1.address
+                        );
+                    expect(afterIds.length - beforeIds.length).to.be.equal(1);
+                    expect(
+                        beforeNotListedIds.length - afterNotListedIds.length
+                    ).to.be.equal(1);
+
+                    let depositIds_1 =
+                        await this.lendingMaster.getUserDepositedIds(
+                            this.lender_2.address
+                        );
+                    await this.lendingMaster.connect(this.lender_2).lend(
+                        [depositIds_1[0]],
+                        [
+                            {
+                                paymentToken: this.DAI.address,
+                                prepayAmount: bigNum(30, 18),
+                                lendDuration: 7,
+                                winningRateForLender: 300,
+                                winningRateForBorrower: 200,
+                                gameFee: 0,
+                                prepay: true,
+                            },
+                        ]
+                    );
+                });
+
+                it("reverts if already listed", async function () {
+                    await expect(
+                        this.lendingMaster.connect(this.lender_1).lend(
+                            [depositedIds[0]],
+                            [
+                                {
+                                    paymentToken: this.DAI.address,
+                                    prepayAmount: bigNum(30, 18),
+                                    lendDuration: 7,
+                                    winningRateForLender: 300,
+                                    winningRateForBorrower: 200,
+                                    gameFee: 0,
+                                    prepay: true,
+                                },
+                            ]
+                        )
+                    ).to.be.revertedWith("already listed");
+                });
+            });
+
+            describe("lend multi decks", function () {
+                it("lend multi decks", async function () {
+                    let notListedIds =
+                        await this.lendingMaster.getUserNotListedIds(
+                            this.lender_1.address
+                        );
+                    await this.lendingMaster.connect(this.lender_1).lend(
+                        [notListedIds[0], notListedIds[1]],
+                        [
+                            {
+                                paymentToken: this.USDT.address,
+                                prepayAmount: 0,
+                                lendDuration: 7,
+                                winningRateForLender: 300,
+                                winningRateForBorrower: 200,
+                                gameFee: 0,
+                                prepay: false,
+                            },
+                            {
+                                paymentToken: this.Fevr.address,
+                                prepayAmount: bigNum(30, 18),
+                                lendDuration: 7,
+                                winningRateForLender: 300,
+                                winningRateForBorrower: 200,
+                                gameFee: 0,
+                                prepay: true,
+                            },
+                        ]
+                    );
+                });
+            });
+        });
+
+        describe("borrow single collection and NLBundle", function () {
+            describe("borrow single deck", function () {
+                let totalListedIds;
+                it("reverts if array length is zero", async function () {
+                    await expect(
+                        this.lendingMaster.connect(this.borrower_1).borrow([])
+                    ).to.be.revertedWith("invalid length array");
+                });
+
+                it("reverts if deckId is not listed for lend", async function () {
+                    await expect(
+                        this.lendingMaster.connect(this.borrower_1).borrow([0])
+                    ).to.be.revertedWith("not listed for lend");
+                });
+
+                it("reverts if not enough cost for borrow", async function () {
+                    totalListedIds =
+                        await this.lendingMaster.getTotalListedCollections();
+                    await expect(
+                        this.lendingMaster
+                            .connect(this.borrower_1)
+                            .borrow([totalListedIds[0]])
+                    ).to.be.revertedWith("not enough for prepayment");
+                });
+
+                it("reverts if lender is not same", async function () {
+                    await this.DAI.transfer(
+                        this.borrower_1.address,
+                        bigNum(1000, 18)
+                    );
+                    await this.USDT.transfer(
+                        this.borrower_1.address,
+                        bigNum(1000, 6)
+                    );
+                    let transferAmount = BigInt(
+                        BigInt(
+                            await this.Fevr.balanceOf(this.deployer.address)
+                        ) / BigInt(2)
+                    );
+                    await this.Fevr.transfer(
+                        this.borrower_1.address,
+                        BigInt(transferAmount)
+                    );
+
+                    await this.DAI.connect(this.borrower_1).approve(
+                        this.lendingMaster.address,
+                        bigNum(1000, 18)
+                    );
+                    await this.USDT.connect(this.borrower_1).approve(
+                        this.lendingMaster.address,
+                        bigNum(1000, 6)
+                    );
+                    await this.Fevr.connect(this.borrower_1).approve(
+                        this.lendingMaster.address,
+                        BigInt(transferAmount)
+                    );
+
+                    let userListedIds_1 =
+                        await this.lendingMaster.getUserListedIds(
+                            this.lender_1.address
+                        );
+                    let userListedIds_2 =
+                        await this.lendingMaster.getUserListedIds(
+                            this.lender_2.address
+                        );
+                    await expect(
+                        this.lendingMaster
+                            .connect(this.borrower_1)
+                            .borrow([userListedIds_1[0], userListedIds_2[0]])
+                    ).to.be.revertedWith("should be same lender");
+                });
+
+                it("borrow deck and check buyback and serviceFee", async function () {
+                    let borrowDeckIds = [totalListedIds[0], totalListedIds[3]];
+
+                    let borrowDuration = 5;
+                    let req_1 = await this.lendingMaster.lendingReqsPerDeck(
+                        borrowDeckIds[0]
+                    );
+                    let req_2 = await this.lendingMaster.lendingReqsPerDeck(
+                        borrowDeckIds[1]
+                    );
+
+                    let prepayDAIAmount = req_1.prepayAmount;
+                    let prepayFevrAmount = req_2.prepayAmount;
+
+                    let beforeLenderDAIBal = await this.DAI.balanceOf(
+                        this.lender_1.address
+                    );
+                    let beforeLenderFevrBal = await this.Fevr.balanceOf(
+                        this.lender_1.address
+                    );
+                    let [beforeBorrowedIds, ,] =
+                        await this.lendingMaster.getUserBorrowedIds(
+                            this.borrower_1.address
+                        );
+                    let beforeProtocolFevrBal = await this.Fevr.balanceOf(
+                        this.treasury.address
+                    );
+                    let beforeDEADFevrBal = await this.Fevr.balanceOf(
+                        DEADWallet
+                    );
+                    await this.lendingMaster
+                        .connect(this.borrower_1)
+                        .borrow(borrowDeckIds);
+                    let [afterBorrowedIds, ,] =
+                        await this.lendingMaster.getUserBorrowedIds(
+                            this.borrower_1.address
+                        );
+                    let afterLenderDAIBal = await this.DAI.balanceOf(
+                        this.lender_1.address
+                    );
+                    let afterLenderFevrBal = await this.Fevr.balanceOf(
+                        this.lender_1.address
+                    );
+                    let afterProtocolFevrBal = await this.Fevr.balanceOf(
+                        this.treasury.address
+                    );
+                    let afterDEADFevrBal = await this.Fevr.balanceOf(
+                        DEADWallet
+                    );
+
+                    expect(
+                        smallNum(
+                            BigInt(afterLenderDAIBal) -
+                                BigInt(beforeLenderDAIBal),
+                            18
+                        )
+                    ).to.be.equal(smallNum(prepayDAIAmount, 18));
+                    expect(
+                        smallNum(
+                            BigInt(afterLenderFevrBal) -
+                                BigInt(beforeLenderFevrBal),
+                            18
+                        )
+                    ).to.be.equal(smallNum(prepayFevrAmount, 18));
+                    expect(
+                        afterBorrowedIds.length - beforeBorrowedIds.length
+                    ).to.be.equal(2);
+
+                    expect(
+                        smallNum(
+                            BigInt(afterProtocolFevrBal) -
+                                BigInt(beforeProtocolFevrBal),
+                            18
+                        )
+                    ).to.be.greaterThan(0);
+                    expect(
+                        smallNum(
+                            BigInt(afterDEADFevrBal) -
+                                BigInt(beforeDEADFevrBal),
+                            18
+                        )
+                    ).to.be.greaterThan(0);
+                });
+
+                it("reverts if already borrowed", async function () {
+                    await expect(
+                        this.lendingMaster
+                            .connect(this.borrower_1)
+                            .borrow([totalListedIds[0]])
+                    ).to.be.revertedWith("already borrowed");
+                });
+            });
+        });
+    });
+
+    describe("deposit LBundle and make LBundle", function () {
+        describe("depositLBundle", function () {
+            it("reverts if array length is zero", async function () {
+                await expect(
+                    this.lendingMaster
+                        .connect(this.lender_1)
+                        .depositCollection([], [], true)
+                ).to.be.revertedWith("invalid length array");
+            });
+
+            it("reverts if array length is mismatch", async function () {
+                await expect(
+                    this.lendingMaster
+                        .connect(this.lender_1)
+                        .depositCollection(
+                            [this.collection_1.address],
+                            [],
+                            true
+                        )
+                ).to.be.revertedWith("mismatch length array");
+            });
+
+            it("reverts if collection amount is over maxAmountForBundle", async function () {
+                let collectionAddr = [];
+                let tokenIds = [];
+
+                for (let i = 1; i <= 50; i++) {
+                    collectionAddr.push(this.collection_1.address);
+                    tokenIds.push(i);
+                }
+                await expect(
+                    this.lendingMaster
+                        .connect(this.lender_1)
+                        .depositCollection(collectionAddr, tokenIds, true)
+                ).to.be.revertedWith("invalid deposit amount");
+            });
+
+            it("depositLBundle", async function () {
+                let collectionAddr = [];
+                let tokenIds = [];
+
+                for (let i = 81; i <= 90; i++) {
+                    collectionAddr.push(this.collection_1.address);
+                    tokenIds.push(i);
+                }
+
+                let deckId = await this.lendingMaster.depositId();
+                let beforeDepositedIds =
+                    await this.lendingMaster.getUserDepositedIds(
+                        this.lender_1.address
+                    );
+                /// reverts if LBundleMode is disabled.
+                await expect(
+                    this.lendingMaster
+                        .connect(this.lender_1)
+                        .depositCollection(collectionAddr, tokenIds, true)
+                ).to.be.revertedWith("LBundleMode disabled");
+
+                /// enable LBundleMode
+                await expect(
+                    this.lendingMaster
+                        .connect(this.lender_1)
+                        .enableLBundleMode(true)
+                ).to.be.revertedWith("Ownable: caller is not the owner");
+                await this.lendingMaster.enableLBundleMode(true);
+
+                await this.lendingMaster
+                    .connect(this.lender_1)
+                    .depositCollection(collectionAddr, tokenIds, true);
+                let afterDepositedIds =
+                    await this.lendingMaster.getUserDepositedIds(
+                        this.lender_1.address
+                    );
+                let collectionInfo = await this.lendingMaster.getCollectionInfo(
+                    deckId
+                );
+                let [deckInfo, deckIds] =
+                    await this.lendingMaster.getDepositInfo(deckId);
+
+                expect(deckInfo.owner).to.be.equal(this.lender_1.address);
+                expect(deckIds.length).to.be.equal(1);
+                expect(deckIds[0]).to.be.equal(deckId);
+                expect(collectionInfo.collections.length).to.be.equal(10);
+                expect(
+                    afterDepositedIds.length - beforeDepositedIds.length
+                ).to.be.equal(1);
+            });
+        });
+
+        describe("mergeDeposits", function () {
+            it("reverts if array length is zero", async function () {
+                await expect(
+                    this.lendingMaster.connect(this.lender_1).mergeDeposits([])
+                ).to.be.revertedWith("invalid length array");
+            });
+
+            it("reverts if deckId is invalid", async function () {
+                await expect(
+                    this.lendingMaster
+                        .connect(this.lender_1)
+                        .mergeDeposits([1000, 10001])
+                ).to.be.revertedWith("invalid depositId");
+            });
+
+            it("reverts if deckId is borrowed", async function () {
+                let [borrowedIds, ,] =
+                    await this.lendingMaster.getUserBorrowedIds(
+                        this.borrower_1.address
+                    );
+                await expect(
+                    this.lendingMaster
+                        .connect(this.lender_1)
+                        .mergeDeposits([borrowedIds[0], 100])
+                ).to.be.revertedWith("borrowed depositId");
+            });
+
+            it("reverts if deckId is already listed for lend", async function () {
+                let listedIds = await this.lendingMaster.getUserListedIds(
+                    this.lender_1.address
+                );
+                await expect(
+                    this.lendingMaster
+                        .connect(this.lender_1)
+                        .mergeDeposits([listedIds[1], 100])
+                ).to.be.revertedWith("listed for lend");
+            });
+
+            it("make LBundle", async function () {
+                let notListedIds = await this.lendingMaster.getUserNotListedIds(
+                    this.lender_1.address
+                );
+                let beforeListedIds = await this.lendingMaster.getUserListedIds(
+                    this.lender_1.address
+                );
+                await this.lendingMaster
+                    .connect(this.lender_1)
+                    .mergeDeposits(notListedIds);
+                let afterListedIds = await this.lendingMaster.getUserListedIds(
+                    this.lender_1.address
+                );
+                notListedIds = await this.lendingMaster.getUserNotListedIds(
+                    this.lender_1.address
+                );
+
+                expect(
+                    afterListedIds.length - beforeListedIds.length
+                ).to.be.equal(1);
+                expect(notListedIds.length).to.be.equal(0);
+            });
+        });
+    });
+
+    describe("withdrawCollection", function () {
+        it("reverts if array length is zero", async function () {
+            await expect(
+                this.lendingMaster.connect(this.lender_1).withdrawCollection([])
+            ).to.be.revertedWith("invalid length array");
+        });
+
+        it("reverts if caller is not deck owner", async function () {
+            let depositedIds = await this.lendingMaster.getUserDepositedIds(
+                this.lender_1.address
+            );
+            await expect(
+                this.lendingMaster
+                    .connect(this.lender_2)
+                    .withdrawCollection([depositedIds[0]])
+            ).to.be.revertedWith("not deck owner");
+        });
+
+        it("reverts if depositId is borrowed", async function () {
+            let [borrowedIds, ,] = await this.lendingMaster.getUserBorrowedIds(
+                this.borrower_1.address
+            );
+            await expect(
+                this.lendingMaster
+                    .connect(this.lender_1)
+                    .withdrawCollection([borrowedIds[0]])
+            ).to.be.revertedWith("borrowed depositId");
+        });
+
+        it("withdrawCollection", async function () {
+            let depositedIds = await this.lendingMaster.getUserDepositedIds(
+                this.lender_1.address
+            );
+            await this.lendingMaster
+                .connect(this.lender_1)
+                .withdrawCollection([depositedIds[1]]);
+            let afterDepositedIds =
+                await this.lendingMaster.getUserDepositedIds(
+                    this.lender_1.address
+                );
+            expect(depositedIds.length - afterDepositedIds.length).to.be.equal(
+                1
+            );
+        });
+    });
+
+    describe("withdraw token", function () {
+        it("reverts if caller is not the owner", async function () {
+            await expect(
+                this.treasury
+                    .connect(this.lender_1)
+                    .withdrawToken(this.DAI.address)
+            ).to.be.revertedWith("Ownable: caller is not the owner");
+        });
+
+        it("reverts if no withdrawable amount", async function () {
+            await expect(
+                this.treasury.withdrawToken(this.USDC.address)
+            ).to.be.revertedWith("no withdrawable amount");
+        });
+
+        it("withdrawToken", async function () {
+            let beforeBal = await this.Fevr.balanceOf(this.deployer.address);
+            await this.treasury.withdrawToken(this.Fevr.address);
+            let afterBal = await this.Fevr.balanceOf(this.deployer.address);
+            expect(
+                smallNum(BigInt(afterBal) - BigInt(beforeBal), 18)
+            ).to.be.greaterThan(0);
+        });
+    });
+});
