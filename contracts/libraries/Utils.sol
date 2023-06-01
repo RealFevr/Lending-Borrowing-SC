@@ -88,7 +88,7 @@ library Utils {
         uint256 _maxAmount
     ) internal pure {
         require(
-            _minAmount > 1 && _maxAmount > _minAmount,
+            _minAmount >= 1 && _maxAmount >= _minAmount,
             "invalid config amount"
         );
     }
