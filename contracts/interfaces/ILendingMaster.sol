@@ -34,13 +34,8 @@ interface ILendingMaster {
         address paymentToken;
         uint256 feeAmount;
         string serviceFeeName;
+        bool burnFlag;
         bool active;
-        uint16 burnPercent;
-    }
-
-    struct BuyBackFee {
-        bool active;
-        uint16 feeRate;
     }
 
     /// @notice Set treasury contract address.
@@ -84,23 +79,14 @@ interface ILendingMaster {
     /// @param _paymentToken    The address of payment token.
     /// @param _feeAmount       The amount of service fee.
     /// @param _feeFlag         Status fee is active or not.
+    /// @param _burnFlag        Burn service fee or not.
     /// @param _feeName         The service fee name.
-    /// @param _burnPercent     The percent to burn.
     function setServiceFee(
         address _paymentToken,
         uint256 _feeAmount,
         bool _feeFlag,
-        string memory _feeName,
-        uint16 _burnPercent
-    ) external;
-
-    /// @notice Linke service fee to an collection.
-    /// @dev Only owner can call this function and service fee linked only once per collection.
-    /// @param _serviceFeeId    ServiceFee id.
-    /// @param _collectionAddress      The address of collection.
-    function linkServiceFee(
-        uint256 _serviceFeeId,
-        address _collectionAddress
+        bool _burnFlag,
+        string memory _feeName
     ) external;
 
     /// @notice Set max amount for bundle.
@@ -148,17 +134,6 @@ interface ILendingMaster {
     /// @notice Borrow collections with depositIds.
     /// @dev Borrowers can borrow several collections but from only one lender.
     function borrow(uint256[] memory _depositIds) external payable;
-
-    /// @notice Enables the buyback for a certain ERC20.
-    /// @dev Only owner can call this function.
-    /// @param _token           The address of token.
-    /// @param _turningStatus   Status for turn on or off.
-    function buybackFeeTake(address _token, bool _turningStatus) external;
-
-    /// @notice Sets the buyback fee for certain ERC20.
-    /// @param _token       The address of token.
-    /// @param _buybackFee  Fee percent of buyback.
-    function setBuybackFee(address _token, uint16 _buybackFee) external;
 
     /// @notice Withdraw collections.
     /// @param _depositIds depositIds to withdraw.
@@ -208,12 +183,11 @@ interface ILendingMaster {
     event NLBundlesSet(address[] indexed nlBundles, bool accept);
 
     event ServiceFeeSet(
-        uint256 serviceFeeId,
         address indexed paymentToken,
         uint256 feeAmount,
         bool feeFlag,
-        string feeName,
-        uint16 burnPercent
+        bool burnFlag,
+        string feeName
     );
 
     event ServiceFeeLinked(
@@ -251,10 +225,6 @@ interface ILendingMaster {
     event Lent(uint256[] depositIds, LendingReq[] lendingReqs);
 
     event Borrowed(uint256[] depositIds);
-
-    event BuybackFeeTake(address indexed token, bool turningStatus);
-
-    event BuybackFeeSet(address indexed token, uint16 buybackFee);
 
     event CollectionWithdrawn(uint256[] depositIds);
 

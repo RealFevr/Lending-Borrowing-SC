@@ -11,8 +11,7 @@ interface ITreasury {
     function takeServiceFee(
         address _paymentToken,
         uint256 _amount,
-        uint16 _burnPercent,
-        uint16 _buybackFeeRate
+        bool _burnFlag
     ) external payable;
 
     /// @notice withdraw accumulated token.

@@ -12,7 +12,9 @@ const {
     bigNum,
     spendTime,
     day,
+    getETHBalance,
 } = require("../scripts/utils");
+const { ZERO_ADDRESS } = require("@openzeppelin/test-helpers/src/constants");
 
 describe("Lending-Borrowing Protocol test", function () {
     let uniswapRouterAddress = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
@@ -334,116 +336,56 @@ describe("Lending-Borrowing Protocol test", function () {
         });
     });
 
-    describe("set service fee and link it to collection", function () {
-        describe("set service fee", function () {
-            it("reverts if caller is not the owner", async function () {
-                await expect(
-                    this.lendingMaster.connect(this.lender_1).setServiceFee(
+    describe("set service fee", function () {
+        it("reverts if caller is not the owner", async function () {
+            await expect(
+                this.lendingMaster
+                    .connect(this.lender_1)
+                    .setServiceFee(
                         this.DAI.address,
                         bigNum(10, 18),
                         true,
-                        "DAI fee setting",
-                        100 // 10%
+                        false,
+                        "DAI fee setting"
                     )
-                ).to.be.revertedWith("Ownable: caller is not the owner");
-            });
-
-            it("reverts if payment token is not allowed", async function () {
-                await expect(
-                    this.lendingMaster.setServiceFee(
-                        this.USDC.address,
-                        bigNum(10, 6),
-                        true,
-                        "USDC fee setting",
-                        100 // 10%
-                    )
-                ).to.be.revertedWith("token is not allowed");
-            });
-
-            it("reverts if burnPercent is over 100%", async function () {
-                await expect(
-                    this.lendingMaster.setServiceFee(
-                        this.DAI.address,
-                        bigNum(10, 18),
-                        true,
-                        "DAI fee setting",
-                        10000
-                    )
-                ).to.be.revertedWith("invalid burn percent");
-            });
-
-            it("reverts if feeAmount is zero", async function () {
-                await expect(
-                    this.lendingMaster.setServiceFee(
-                        this.DAI.address,
-                        0,
-                        true,
-                        "DAI fee setting",
-                        100 // 10%
-                    )
-                ).to.be.revertedWith("invalid feeAmount");
-            });
-
-            it("setServiceFee", async function () {
-                await this.lendingMaster.setServiceFee(
-                    constants.ZERO_ADDRESS,
-                    bigNum(1, 17),
-                    true,
-                    "ETH fee setting",
-                    100 // 10%
-                );
-
-                let serviceFeeInfo = await this.lendingMaster.serviceFees(1);
-                expect(serviceFeeInfo.paymentToken).to.be.equal(
-                    constants.ZERO_ADDRESS
-                );
-                expect(smallNum(serviceFeeInfo.feeAmount, 18)).to.be.equal(0.1);
-                expect(await this.lendingMaster.serviceFeeId()).to.be.equal(2);
-            });
+            ).to.be.revertedWith("Ownable: caller is not the owner");
         });
 
-        describe("linkServiceFee", function () {
-            it("reverts if caller is not the owner", async function () {
-                await expect(
-                    this.lendingMaster
-                        .connect(this.lender_1)
-                        .linkServiceFee(1, this.collection_1.address)
-                ).to.be.revertedWith("Ownable: caller is not the owner");
-            });
+        it("reverts if payment token is not allowed", async function () {
+            await expect(
+                this.lendingMaster.setServiceFee(
+                    this.USDC.address,
+                    bigNum(10, 6),
+                    true,
+                    false,
+                    "USDC fee setting"
+                )
+            ).to.be.revertedWith("token is not allowed");
+        });
 
-            it("reverts if serviceFeeId is invalid", async function () {
-                await expect(
-                    this.lendingMaster.linkServiceFee(
-                        100,
-                        this.collection_1.address
-                    )
-                ).to.be.revertedWith("invalid serviceFeeId");
-            });
+        it("setServiceFee", async function () {
+            await this.lendingMaster.setServiceFee(
+                constants.ZERO_ADDRESS,
+                bigNum(1, 17),
+                true,
+                false,
+                "ETH fee setting"
+            );
 
-            it("reverts if collection is not acceptable", async function () {
-                await expect(
-                    this.lendingMaster.linkServiceFee(
-                        1,
-                        this.collection_3.address
-                    )
-                ).to.be.revertedWith("not acceptable collection address");
-            });
+            await this.lendingMaster.setServiceFee(
+                this.DAI.address,
+                bigNum(2, 18),
+                true,
+                true,
+                "DAI fee setting"
+            );
 
-            it("linkServiceFee", async function () {
-                await this.lendingMaster.linkServiceFee(
-                    1,
-                    this.collection_1.address
-                );
-            });
-
-            it("reverts if serviceFee is already linked", async function () {
-                await expect(
-                    this.lendingMaster.linkServiceFee(
-                        1,
-                        this.collection_1.address
-                    )
-                ).to.be.revertedWith("already linked to a fee");
-            });
+            let serviceFeeInfo = await this.lendingMaster.serviceFees(
+                constants.ZERO_ADDRESS
+            );
+            expect(serviceFeeInfo.paymentToken).to.be.equal(
+                constants.ZERO_ADDRESS
+            );
         });
     });
 
@@ -504,80 +446,6 @@ describe("Lending-Borrowing Protocol test", function () {
                 this.NLBundle_1.address,
                 depositLimit
             );
-        });
-    });
-
-    describe("set buybackFee settings", function () {
-        describe("setBuybackFee", function () {
-            it("reverts if caller is not the owner", async function () {
-                await expect(
-                    this.lendingMaster.connect(this.lender_1).setBuybackFee(
-                        this.DAI.address,
-                        200 // 20%
-                    )
-                ).to.be.revertedWith("Ownable: caller is not the owner");
-            });
-
-            it("reverts if token is not allowed", async function () {
-                await expect(
-                    this.lendingMaster.setBuybackFee(this.USDC.address, 20)
-                ).to.be.revertedWith("token is not allowed");
-            });
-
-            it("reverts if buybackFee rate is zero", async function () {
-                await expect(
-                    this.lendingMaster.setBuybackFee(this.DAI.address, 0)
-                ).to.be.revertedWith("invalid buybackFee rate");
-            });
-
-            it("setBuybackFee", async function () {
-                await this.lendingMaster.setBuybackFee(this.DAI.address, 100);
-                await this.lendingMaster.setBuybackFee(this.USDT.address, 150);
-            });
-        });
-
-        describe("buybackFeeTake", function () {
-            it("reverts if caller is not the owner", async function () {
-                await expect(
-                    this.lendingMaster
-                        .connect(this.lender_1)
-                        .buybackFeeTake(this.DAI.address, true)
-                ).to.be.revertedWith("Ownable: caller is not the owner");
-            });
-
-            it("reverts if token is not allowed", async function () {
-                await expect(
-                    this.lendingMaster.buybackFeeTake(this.USDC.address, true)
-                ).to.be.revertedWith("token is not allowed");
-            });
-
-            it("reverts if buybackFee rate is zero", async function () {
-                await expect(
-                    this.lendingMaster.buybackFeeTake(this.Fevr.address, true)
-                ).to.be.revertedWith("buybackFee rate is not set");
-            });
-
-            it("buybackFeeTake", async function () {
-                await this.lendingMaster.setBuybackFee(this.Fevr.address, 200);
-                await this.lendingMaster.buybackFeeTake(
-                    this.Fevr.address,
-                    true
-                );
-                await this.lendingMaster.buybackFeeTake(this.DAI.address, true);
-                await this.lendingMaster.buybackFeeTake(
-                    this.USDT.address,
-                    true
-                );
-
-                await this.lendingMaster.setBuybackFee(
-                    constants.ZERO_ADDRESS,
-                    200
-                );
-                await this.lendingMaster.buybackFeeTake(
-                    constants.ZERO_ADDRESS,
-                    true
-                );
-            });
         });
     });
 
@@ -680,24 +548,6 @@ describe("Lending-Borrowing Protocol test", function () {
                         )
                 ).to.be.revertedWith("not collection owner");
             });
-
-            // it("reverts deposit limit exceeds", async function () {
-            //     let depositIds = [];
-            //     let collectionAddr = [];
-            //     for (let i = 61; i <= 100; i++) {
-            //         depositIds.push(i);
-            //         collectionAddr.push(this.collection_1.address);
-            //     }
-
-            //     await this.collection_1
-            //         .connect(this.lender_1)
-            //         .setApprovalForAll(this.lendingMaster.address, true);
-            //     await expect(
-            //         this.lendingMaster
-            //             .connect(this.lender_1)
-            //             .depositCollection(collectionAddr, depositIds, false)
-            //     ).to.be.revertedWith("exceeds to max deposit limit");
-            // });
 
             it("deposit collections", async function () {
                 let depositIds = [];
@@ -1016,8 +866,8 @@ describe("Lending-Borrowing Protocol test", function () {
                                 prepay: false,
                             },
                             {
-                                paymentToken: this.Fevr.address,
-                                prepayAmount: bigNum(30, 18),
+                                paymentToken: constants.ZERO_ADDRESS,
+                                prepayAmount: bigNum(3, 17),
                                 lendDuration: 7,
                                 winningRateForLender: 300,
                                 winningRateForBorrower: 200,
@@ -1099,16 +949,13 @@ describe("Lending-Borrowing Protocol test", function () {
                     await expect(
                         this.lendingMaster
                             .connect(this.borrower_1)
-                            .borrow([userListedIds_1[0], userListedIds_2[0]], {
-                                value: bigNum(1),
-                            })
+                            .borrow([userListedIds_1[0], userListedIds_2[0]])
                     ).to.be.revertedWith("should be same lender");
                 });
 
                 it("borrow deck and check buyback and serviceFee", async function () {
                     let borrowDeckIds = [totalListedIds[0], totalListedIds[3]];
 
-                    let borrowDuration = 5;
                     let req_1 = await this.lendingMaster.lendingReqsPerDeck(
                         borrowDeckIds[0]
                     );
@@ -1117,12 +964,12 @@ describe("Lending-Borrowing Protocol test", function () {
                     );
 
                     let prepayDAIAmount = req_1.prepayAmount;
-                    let prepayFevrAmount = req_2.prepayAmount;
+                    let prepayETHAmount = req_2.prepayAmount;
 
                     let beforeLenderDAIBal = await this.DAI.balanceOf(
                         this.lender_1.address
                     );
-                    let beforeLenderFevrBal = await this.Fevr.balanceOf(
+                    let beforeLenderETHBal = await getETHBalance(
                         this.lender_1.address
                     );
                     let [beforeBorrowedIds, ,] =
@@ -1145,7 +992,7 @@ describe("Lending-Borrowing Protocol test", function () {
                     let afterLenderDAIBal = await this.DAI.balanceOf(
                         this.lender_1.address
                     );
-                    let afterLenderFevrBal = await this.Fevr.balanceOf(
+                    let afterLenderETHBal = await getETHBalance(
                         this.lender_1.address
                     );
                     let afterProtocolFevrBal = await this.Fevr.balanceOf(
@@ -1164,11 +1011,11 @@ describe("Lending-Borrowing Protocol test", function () {
                     ).to.be.equal(smallNum(prepayDAIAmount, 18));
                     expect(
                         smallNum(
-                            BigInt(afterLenderFevrBal) -
-                                BigInt(beforeLenderFevrBal),
+                            BigInt(afterLenderETHBal) -
+                                BigInt(beforeLenderETHBal),
                             18
                         )
-                    ).to.be.equal(smallNum(prepayFevrAmount, 18));
+                    ).to.be.equal(smallNum(prepayETHAmount, 18));
                     expect(
                         afterBorrowedIds.length - beforeBorrowedIds.length
                     ).to.be.equal(2);

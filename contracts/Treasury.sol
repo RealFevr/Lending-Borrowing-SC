@@ -44,47 +44,8 @@ contract Treasury is Ownable, ITreasury {
     function takeServiceFee(
         address _paymentToken,
         uint256 _amount,
-        uint16 _burnPercent,
-        uint16 _buybackFeeRate
+        bool _burnFlag
     ) external payable override onlyLendingMaster {
-        uint256 burnAmount = (_amount * _burnPercent) / FIXED_POINT;
-        if (_paymentToken == address(0)) {
-            _transferBNB(DEAD, burnAmount);
-        } else {
-            IERC20(_paymentToken).safeTransfer(DEAD, burnAmount);
-        }
-        _buyBack(_paymentToken, _amount - burnAmount, _buybackFeeRate);
-    }
-
-    /// @inheritdoc ITreasury
-    function withdrawToken(address _token) external override onlyOwner {
-        address sender = msg.sender;
-        require(
-            (_token == address(0) && address(this).balance > 0) ||
-                (IERC20(_token).balanceOf(address(this)) > 0),
-            "no withdrawable amount"
-        );
-        uint256 claimableAmount;
-        if (_token == address(0)) {
-            claimableAmount = address(this).balance;
-            _transferBNB(sender, claimableAmount);
-        } else {
-            claimableAmount = IERC20(_token).balanceOf(address(this));
-            IERC20(_token).safeTransfer(owner(), claimableAmount);
-        }
-
-        emit TokenWithdrawn(_token, claimableAmount);
-    }
-
-    receive() external payable {}
-
-    function _buyBack(
-        address _paymentToken,
-        uint256 _amount,
-        uint16 _buybackFeeRate
-    ) internal {
-        if (_amount == 0) return;
-
         uint256 swappedAmount = _amount;
         if (_paymentToken != fevrToken) {
             address WETH = IUniswapV2Router02(dexRouter).WETH();
@@ -116,11 +77,32 @@ contract Treasury is Ownable, ITreasury {
             swappedAmount = afterBal - beforeBal;
         }
 
-        uint256 feeAmount = (swappedAmount * _buybackFeeRate) / FIXED_POINT;
-        uint256 burnAmount = swappedAmount - feeAmount;
-        if (burnAmount == 0) return;
-        IERC20(fevrToken).safeTransfer(DEAD, burnAmount);
+        if (_burnFlag) {
+            IERC20(fevrToken).safeTransfer(DEAD, swappedAmount);
+        }
     }
+
+    /// @inheritdoc ITreasury
+    function withdrawToken(address _token) external override onlyOwner {
+        address sender = msg.sender;
+        require(
+            (_token == address(0) && address(this).balance > 0) ||
+                (IERC20(_token).balanceOf(address(this)) > 0),
+            "no withdrawable amount"
+        );
+        uint256 claimableAmount;
+        if (_token == address(0)) {
+            claimableAmount = address(this).balance;
+            _transferBNB(sender, claimableAmount);
+        } else {
+            claimableAmount = IERC20(_token).balanceOf(address(this));
+            IERC20(_token).safeTransfer(owner(), claimableAmount);
+        }
+
+        emit TokenWithdrawn(_token, claimableAmount);
+    }
+
+    receive() external payable {}
 
     function _transferBNB(address _to, uint256 _amount) internal {
         require(_amount > 0, "invalid send BNB amount");

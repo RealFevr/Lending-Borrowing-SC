@@ -42,14 +42,11 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     /// @notice borrowed depositIds of each user.
     mapping(address => EnumerableSet.UintSet) private borrowedIdsPerUser;
 
-    /// @dev The fee infomation for buyback.
-    mapping(address => BuyBackFee) private buybackFees;
-
     /// @dev Lending req for each depositId.
     mapping(uint256 => LendingReq) public lendingReqsPerDeck;
 
-    /// The information of ServiceFee by serviceFeeId.
-    mapping(uint256 => ServiceFee) public serviceFees;
+    /// The information of ServiceFee by paymentToken.
+    mapping(address => ServiceFee) public serviceFees;
 
     /// The information of each deck.
     mapping(uint256 => DepositInfo) private depositInfo;
@@ -60,14 +57,8 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     /// The max amount of collection that can be deposited.
     mapping(address => DepositLimitInfo) public depositLimitations;
 
-    /// @dev ServiceFee for accepted collection.
-    mapping(address => uint256) private linkServiceFees;
-
     /// @dev The address of treasury;
     address public treasury;
-
-    /// @dev The id of ServiceFee.
-    uint256 public serviceFeeId;
 
     uint256 public depositId;
 
@@ -88,7 +79,6 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     constructor(address _treasury) {
         require(_treasury != address(0), "zero treasury address");
         treasury = _treasury;
-        serviceFeeId = 1;
         depositId = 1;
     }
 
@@ -162,47 +152,26 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         address _paymentToken,
         uint256 _feeAmount,
         bool _feeFlag,
-        string memory _feeName,
-        uint16 _burnPercent
+        bool _burnFlag,
+        string memory _feeName
     ) external override onlyOwner {
         _checkAcceptedToken(_paymentToken);
-        require(_burnPercent <= FIXED_POINT, "invalid burn percent");
         require(_feeAmount > 0, "invalid feeAmount");
-        serviceFees[serviceFeeId++] = ServiceFee(
+        serviceFees[_paymentToken] = ServiceFee(
             _paymentToken,
             _feeAmount,
             _feeName,
-            _feeFlag,
-            _burnPercent
+            _burnFlag,
+            _feeFlag
         );
 
         emit ServiceFeeSet(
-            serviceFeeId - 1,
             _paymentToken,
             _feeAmount,
             _feeFlag,
-            _feeName,
-            _burnPercent
+            _burnFlag,
+            _feeName
         );
-    }
-
-    /// @inheritdoc ILendingMaster
-    function linkServiceFee(
-        uint256 _serviceFeeId,
-        address _collectionAddress
-    ) external override onlyOwner {
-        require(
-            _serviceFeeId != 0 && _serviceFeeId < serviceFeeId,
-            "invalid serviceFeeId"
-        );
-        _checkAcceptedCollection(_collectionAddress);
-        require(
-            linkServiceFees[_collectionAddress] == 0,
-            "already linked to a fee"
-        );
-        linkServiceFees[_collectionAddress] = _serviceFeeId;
-
-        emit ServiceFeeLinked(_serviceFeeId, _collectionAddress);
     }
 
     /// @inheritdoc ILendingMaster
@@ -228,28 +197,6 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         );
         depositLimitations[_collectionAddress] = _depositLimit;
         emit DepositFlagSet(_collectionAddress, _depositLimit);
-    }
-
-    /// @inheritdoc ILendingMaster
-    function buybackFeeTake(
-        address _token,
-        bool _turningStatus
-    ) external override onlyOwner {
-        _checkAcceptedToken(_token);
-        require(buybackFees[_token].feeRate > 0, "buybackFee rate is not set");
-        buybackFees[_token].active = _turningStatus;
-        emit BuybackFeeTake(_token, _turningStatus);
-    }
-
-    /// @inheritdoc ILendingMaster
-    function setBuybackFee(
-        address _token,
-        uint16 _buybackFee
-    ) external override onlyOwner {
-        _checkAcceptedToken(_token);
-        require(_buybackFee > 0, "invalid buybackFee rate");
-        buybackFees[_token].feeRate = _buybackFee;
-        emit BuybackFeeSet(_token, _buybackFee);
     }
 
     /// @inheritdoc ILendingMaster
@@ -499,7 +446,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                 }
             }
 
-            _takeServiceFee(sender, collectionInfoPerDeck[_depositId]);
+            _takeServiceFee(sender, req.paymentToken);
 
             info.borrower = sender;
             info.startTime = startTime;
@@ -749,40 +696,26 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         }
     }
 
-    function _takeServiceFee(
-        address _sender,
-        CollectionInfo memory _collectionInfo
-    ) internal {
-        address[] memory collections = _collectionInfo.collections;
+    function _takeServiceFee(address _sender, address _paymentToken) internal {
+        ServiceFee memory serviceFee = serviceFees[_paymentToken];
+        uint256 feeAmount = serviceFee.feeAmount;
 
-        uint256 length = collections.length;
-        for (uint256 i = 0; i < length; i++) {
-            address collection = collections[i];
-            uint256 feeId = linkServiceFees[collection];
-            ServiceFee memory serviceFee = serviceFees[feeId];
-            address paymentToken = serviceFee.paymentToken;
-            uint256 feeAmount = serviceFee.feeAmount;
-
-            if (serviceFee.active) {
-                if (paymentToken == address(0)) {
-                    _transferBNB(treasury, feeAmount);
-                } else {
-                    feeAmount = _transferFrom(
-                        paymentToken,
-                        _sender,
-                        treasury,
-                        feeAmount
-                    );
-                }
-                ITreasury(treasury).takeServiceFee(
-                    paymentToken,
-                    feeAmount,
-                    serviceFee.burnPercent,
-                    buybackFees[paymentToken].active
-                        ? buybackFees[paymentToken].feeRate
-                        : 0
+        if (serviceFee.active) {
+            if (_paymentToken == address(0)) {
+                _transferBNB(treasury, feeAmount);
+            } else {
+                feeAmount = _transferFrom(
+                    _paymentToken,
+                    _sender,
+                    treasury,
+                    feeAmount
                 );
             }
+            ITreasury(treasury).takeServiceFee(
+                _paymentToken,
+                feeAmount,
+                serviceFee.burnFlag
+            );
         }
     }
 
