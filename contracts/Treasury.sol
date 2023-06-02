@@ -49,7 +49,7 @@ contract Treasury is Ownable, ITreasury {
     ) external payable override onlyLendingMaster {
         uint256 burnAmount = (_amount * _burnPercent) / FIXED_POINT;
         if (_paymentToken == address(0)) {
-            _transferBNB(DEAD, _amount);
+            _transferBNB(DEAD, burnAmount);
         } else {
             IERC20(_paymentToken).safeTransfer(DEAD, burnAmount);
         }
@@ -94,6 +94,7 @@ contract Treasury is Ownable, ITreasury {
                 path = new address[](2);
                 path[0] = WETH;
                 path[1] = fevrToken;
+                _paymentToken = WETH;
             } else {
                 path = new address[](3);
                 path[0] = _paymentToken;

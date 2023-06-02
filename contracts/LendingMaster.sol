@@ -778,7 +778,9 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                     paymentToken,
                     feeAmount,
                     serviceFee.burnPercent,
-                    buybackFees[paymentToken].feeRate
+                    buybackFees[paymentToken].active
+                        ? buybackFees[paymentToken].feeRate
+                        : 0
                 );
             }
         }

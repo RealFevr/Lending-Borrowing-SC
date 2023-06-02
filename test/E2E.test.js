@@ -167,6 +167,7 @@ describe("Lending-Borrowing Protocol test", function () {
             expect(allowedTokens.length).to.be.equal(0);
             await this.lendingMaster.setAcceptableERC20(
                 [
+                    constants.ZERO_ADDRESS,
                     this.USDT.address,
                     this.DAI.address,
                     this.Fevr.address,
@@ -175,7 +176,7 @@ describe("Lending-Borrowing Protocol test", function () {
                 true
             );
             allowedTokens = await this.lendingMaster.getAllowedTokens();
-            expect(allowedTokens.length).to.be.equal(4);
+            expect(allowedTokens.length).to.be.equal(5);
         });
 
         it("reverts if already added", async function () {
@@ -385,18 +386,18 @@ describe("Lending-Borrowing Protocol test", function () {
 
             it("setServiceFee", async function () {
                 await this.lendingMaster.setServiceFee(
-                    this.DAI.address,
-                    bigNum(10, 18),
+                    constants.ZERO_ADDRESS,
+                    bigNum(1, 17),
                     true,
-                    "DAI fee setting",
+                    "ETH fee setting",
                     100 // 10%
                 );
 
                 let serviceFeeInfo = await this.lendingMaster.serviceFees(1);
                 expect(serviceFeeInfo.paymentToken).to.be.equal(
-                    this.DAI.address
+                    constants.ZERO_ADDRESS
                 );
-                expect(smallNum(serviceFeeInfo.feeAmount, 18)).to.be.equal(10);
+                expect(smallNum(serviceFeeInfo.feeAmount, 18)).to.be.equal(0.1);
                 expect(await this.lendingMaster.serviceFeeId()).to.be.equal(2);
             });
         });
@@ -565,6 +566,15 @@ describe("Lending-Borrowing Protocol test", function () {
                 await this.lendingMaster.buybackFeeTake(this.DAI.address, true);
                 await this.lendingMaster.buybackFeeTake(
                     this.USDT.address,
+                    true
+                );
+
+                await this.lendingMaster.setBuybackFee(
+                    constants.ZERO_ADDRESS,
+                    200
+                );
+                await this.lendingMaster.buybackFeeTake(
+                    constants.ZERO_ADDRESS,
                     true
                 );
             });
@@ -1085,10 +1095,13 @@ describe("Lending-Borrowing Protocol test", function () {
                         await this.lendingMaster.getUserListedIds(
                             this.lender_2.address
                         );
+
                     await expect(
                         this.lendingMaster
                             .connect(this.borrower_1)
-                            .borrow([userListedIds_1[0], userListedIds_2[0]])
+                            .borrow([userListedIds_1[0], userListedIds_2[0]], {
+                                value: bigNum(1),
+                            })
                     ).to.be.revertedWith("should be same lender");
                 });
 
@@ -1124,7 +1137,7 @@ describe("Lending-Borrowing Protocol test", function () {
                     );
                     await this.lendingMaster
                         .connect(this.borrower_1)
-                        .borrow(borrowDeckIds);
+                        .borrow(borrowDeckIds, { value: bigNum(1) });
                     let [afterBorrowedIds, ,] =
                         await this.lendingMaster.getUserBorrowedIds(
                             this.borrower_1.address
