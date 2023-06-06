@@ -438,8 +438,8 @@ Manage funds from Borrowing/Lending.
 | ------------- | ------------- | ------------- | 
 | setLendingMaster  | Sets LendingMaster contract address | Admin |
 | takeServiceFee  | Transfers the non-FEVR fees into FEVR and burns the tokens | Admin |
-| withdrawToken  | Withdraws tokens | Public |
-| transferBNB  | Withdraw BNB | Public |
+| withdrawToken  | Withdraws tokens | Admin |
+| transferBNB  | Withdraw BNB | Internal |
 
 ### Logic
 
