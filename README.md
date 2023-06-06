@@ -233,14 +233,14 @@ There are two main types of fees:
 
 ### setRFGameFee Function
 
-   function setRFGameFee(uint16 _gameFee) external override onlyOwner {
+     function setRFGameFee(uint16 _gameFee) external override onlyOwner {
         require(_gameFee <= FIXED_POINT, "invalid gameFee rate");
         RF_GAME_FEE = _gameFee;
     }
 
 ### setServiceFee function
 
-function setServiceFee(
+     function setServiceFee(
         address _paymentToken,
         uint256 _feeAmount,
         bool _feeFlag,
