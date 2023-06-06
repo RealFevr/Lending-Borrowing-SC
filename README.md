@@ -322,11 +322,14 @@ Borrow and Lend NFTs and Bundles.
 
 ### Logic
 
-- Set the accepted NFT contracts (collections).
-- Set the accepted Bundle contracts (bundle).
-- Set the accepted ERC20s.
-- Let users deposit NFTs or Bundles lend, borrow and receive a receipt (deckLp).
-- Each bundle for lending has its own rules in terms of pre-payment, fees, etc.
+- Set treasury
+- Set approved ERC20s and ERC721s
+- Set approved and enable bundles and collections
+- Set gameFee and serviceFee
+- deposit bundles/NFTs
+- mergeDeposits if required
+- Lend bundles/NFTs
+- Borrow bundles/NFTs
 
 ## Treasury.Sol 
 
