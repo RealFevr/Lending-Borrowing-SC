@@ -4,21 +4,209 @@ Contract that contains borrowing, lending and marketplace.
 
 # Goal
 
-The goal of Lending and Borrowing is to allow users to lend and borrow bundles of NFTs. 
+The goal of Lending and Borrowing is to allow users to lend and borrow bundles of NFTs or individual NFTs. 
 
 # How it works
 
 The borrowing and lending follows this steps:
 
-1. Deploy collectionManager + serviceManager,
-2. Deploy deckMaster,
-3. Configure contracts (approved tokens, approved bundles, serviceFee, etc)
+1. Deploy LendingMaster.sol and Treasury.sool,
+2. Configure contracts (approved tokens, approved bundles, serviceFee, etc)
 
-**The lender can deposit NFTs and create the bundle in the contract, or deposit a previously created bundle in the bundle smart contract.**
+# Types of deposits
+
+There are three types of bundles that are accepted to the LendingMaster contract.
+
+## Collections
+
+Represent bundles that are created through the Lending contract. A user deposits one or more NFTs adn the LBundle is created.
+
+### depositCollections function
+
+    function depositCollection(
+        address[] memory _collections,
+        uint256[] memory _tokenIds,
+        bool _isLBundleMode
+    ) external override {
+        address sender = msg.sender;
+        uint256 length = Utils.compareAddressArrayLength(
+            _collections,
+            _tokenIds.length
+        );
+        require(
+            !_isLBundleMode ||
+                (maxAmountForBundle >= length && length >= minAmountForBundle),
+            "invalid deposit amount"
+        );
+        require(!_isLBundleMode || LBundleMode, "LBundleMode disabled");
+
+        for (uint256 i = 0; i < length; i++) {
+            address collection = _collections[i];
+            uint256 tokenId = _tokenIds[i];
+            _checkCollection(collection, tokenId);
+            IERC721(collection).transferFrom(sender, address(this), tokenId);
+
+            if (!_isLBundleMode) {
+                depositedIdsPerUser[sender].add(depositId);
+                depositInfo[depositId] = DepositInfo(
+                    sender,
+                    address(0),
+                    0,
+                    0,
+                    Utils.genUintArrayWithArg(depositId)
+                );
+                collectionInfoPerDeck[depositId] = CollectionInfo(
+                    Utils.genAddressArrayWithArg(collection),
+                    Utils.genUintArrayWithArg(tokenId)
+                );
+                depositedIdsPerUser[sender].add(depositId);
+                totalDepositedIds.add(depositId);
+                emit SingleCollectionDeposited(
+                    collection,
+                    tokenId,
+                    depositId++
+                );
+            }
+        }
+
+        if (_isLBundleMode) {
+            depositedIdsPerUser[sender].add(depositId);
+            depositInfo[depositId] = DepositInfo(
+                sender,
+                address(0),
+                0,
+                0,
+                Utils.genUintArrayWithArg(depositId)
+            );
+            collectionInfoPerDeck[depositId] = CollectionInfo(
+                _collections,
+                _tokenIds
+            );
+            depositedIdsPerUser[sender].add(depositId);
+            totalDepositedIds.add(depositId);
+
+            emit LBundleDeposited(_collections, _tokenIds, depositId++);
+        }
+    }
+
+## LBundles
+
+Represents bundles that were created by the LendingMaster contract. 
+
+### LBundles Function
+
+function depositNLBundle(
+        address _bundleAddress,
+        uint256 _tokenId
+    ) external override {
+        address sender = msg.sender;
+        require(
+            allowedNLBundles.contains(_bundleAddress),
+            "not allowed bundle"
+        );
+        require(
+            IERC721(_bundleAddress).ownerOf(_tokenId) == sender,
+            "not bundle owner"
+        );
+
+        (, , address[] memory collections, ) = BundlesInterface(_bundleAddress)
+            .getBundle(_tokenId);
+
+        require(
+            collections.length >=
+                depositLimitations[_bundleAddress].minAmount &&
+                collections.length <=
+                depositLimitations[_bundleAddress].maxAmount,
+            "exceeds to depositLimitation"
+        );
+
+        IERC721(_bundleAddress).transferFrom(sender, address(this), _tokenId);
+
+        depositedIdsPerUser[sender].add(depositId);
+        depositInfo[depositId] = DepositInfo(
+            sender,
+            address(0),
+            0,
+            0,
+            Utils.genUintArrayWithArg(depositId)
+        );
+
+        collectionInfoPerDeck[depositId] = CollectionInfo(
+            Utils.genAddressArrayWithArg(_bundleAddress),
+            Utils.genUintArrayWithArg(_tokenId)
+        );
+
+        depositedIdsPerUser[sender].add(depositId);
+        totalDepositedIds.add(depositId);
+
+        emit NLBundleDeposited(_bundleAddress, _tokenId, depositId++);
+    }
+
+    /// @inheritdoc ILendingMaster
+    function mergeDeposits(uint256[] memory _depositIds) external override {
+        address sender = msg.sender;
+        uint256 length = Utils.checkUintArray(_depositIds);
+        require(
+            maxAmountForBundle >= length && length >= minAmountForBundle,
+            "invalid merge amount"
+        );
+        require(LBundleMode, "LBundleMode disabled");
+        for (uint256 i = 0; i < length; i++) {
+            uint256 _depositId = _depositIds[i];
+            DepositInfo storage info = depositInfo[_depositId];
+            require(
+                depositedIdsPerUser[sender].contains(_depositId),
+                "invalid depositId"
+            );
+            require(
+                info.borrower == address(0) || info.endTime < block.timestamp,
+                "borrowed depositId"
+            );
+            require(
+                !listedIdsPerUser[sender].contains(_depositId),
+                "listed for lend"
+            );
+            depositedIdsPerUser[sender].remove(_depositId);
+            totalDepositedIds.remove(_depositId);
+        }
+        depositedIdsPerUser[sender].add(depositId);
+        listedIdsPerUser[sender].add(depositId);
+        depositInfo[depositId] = DepositInfo(
+            sender,
+            address(0),
+            0,
+            0,
+            _depositIds
+        );
+        totalDepositedIds.add(depositId++);
+        emit LBundleMade(_depositIds);
+    }
+
+## NLBundles 
+
+Represents bundles that were created outside the LendingMaster contract (i.e., RealFevr Marketplace bundles).
+
+## NLBundles Function
+
+    function setNLBundles(
+        address[] memory _nlBundles,
+        bool _accept
+    ) external override onlyOwner {
+        uint256 length = Utils.checkAddressArray(_nlBundles);
+        for (uint256 i = 0; i < length; i++) {
+            Utils.updateAddressEnumerable(
+                allowedNLBundles,
+                _nlBundles[i],
+                _accept
+            );
+        }
+
+        emit NLBundlesSet(_nlBundles, _accept);
+    }
 
 ## Lender steps:
 
-1. Pick the bundle to lend and choose the requirements: duration, fee, winnings share.
+1. Pick the bundle to lend and choose the requirements: duration, prepay fee, winnings share.
 2. Or, create the bundle directly when depositing nfts.
 3. Approve contract and deposit the bundle.
 4. Claim rewards.
@@ -28,24 +216,55 @@ The borrowing and lending follows this steps:
 
 1. Choose a bundle to borrow.
 2. Approve the contract and have the necessary FEVR to complete the transaction.
-3. Borrow the selected bundle and receive an token that represents the bundle borrowed (deckLp).
+3. Borrow the selected bundle,
 4. When you borrow, pay the fees and prepayment (if any).
-5. When you win a portion of the winnings can be claimed by lender.
-
-# Bundles structure
-
-    struct Bundle {
-        uint256 bundleLpId; // the bundle identifier. works similarly to LP tokens, as it represents the underlying assets
-        string name; // the name of the bundle as it can be used as a deck in the NFT web3 games
-        uint256 numberOfNFTs; // the total number of NFTs in the bundle. Max=50.
-        address[] nftAddresses; // the ERC721 contract address of the NFTs added. Bundles supports multiple contracts.
-        uint256[] ids; // the NFTs Ids.
-        uint256[][] fees; // the fees associated to the NFTs. These are automatically populated.
-        address[][] addresses; // the addresses that receive the fees. These are automatically populated.
+5. When you win a game, a portion of the winnings can be claimed by lender.
 
 # Fees 
 
 The only fees that exist are service fees set by realfevr. It is a fee on all borrowing transactions. 
+
+## Types of Fees
+
+There are two main types of fees:
+
+1. Game fees: a % charged by RF on the winnings from games.
+2. Service fee: a fixed fee charged by RF when borrowing.
+
+### setRFGameFee Function
+
+   function setRFGameFee(uint16 _gameFee) external override onlyOwner {
+        require(_gameFee <= FIXED_POINT, "invalid gameFee rate");
+        RF_GAME_FEE = _gameFee;
+    }
+
+### setServiceFee function
+
+function setServiceFee(
+        address _paymentToken,
+        uint256 _feeAmount,
+        bool _feeFlag,
+        bool _burnFlag,
+        string memory _feeName
+    ) external override onlyOwner {
+        _checkAcceptedToken(_paymentToken);
+        require(_feeAmount > 0, "invalid feeAmount");
+        serviceFees[_paymentToken] = ServiceFee(
+            _paymentToken,
+            _feeAmount,
+            _feeName,
+            _burnFlag,
+            _feeFlag
+        );
+
+        emit ServiceFeeSet(
+            _paymentToken,
+            _feeAmount,
+            _feeFlag,
+            _burnFlag,
+            _feeName
+        );
+    }
 
 # Winnings Share
 
@@ -57,94 +276,49 @@ The pre-payment is a fee that can be added by the lender that the borrower must 
 
 # Functions & Logic 
 
-Below you find the list of functions and the purpose of each, as well as logic tests.
+Below you find the list of functions and the purpose of each, as well as logic tests.   
 
-## DeckMaster
+## LendingMaster.sol 
 
-Bundle NFTs together. Lend and borrow deckLps.
-
-### Structure
-
-    contract DeckMaster is ERC721Enumerable, ERC721Holder, Ownable, IDeckMaster {
-    using SafeERC20 for IERC20;
-    
-    /// The information of ServiceFee by serviceFeeId.
-    mapping(uint256 => ServiceFee) private serviceFees;
-
-    /// @dev ServiceFee for accepted collection.
-    mapping(address => uint256) private linkServiceFees;
-    
-    /// @dev Locked token amount for certain token.
-    mapping(address => uint256) private lockedTokenAmount;
-
-    /// @dev The fee infomation for buyback.
-    mapping(address => BuyBackFee) private buybackFees;
-
-    /// @dev The claimable $Fevr token amount comes from winning games.
-    mapping(address => mapping(uint256 => uint256)) public claimableAmount;
-
-    /// The address of collectionManager contract.
-    ICollectionManager public collectionManager;
-
-    /// @dev The address of serviceManager contract.
-    IServiceManager public serviceManager;
-
-    /// @dev The address to burn tokens.
-    address constant DEAD = 0x000000000000000000000000000000000000dEaD;
-
-    /// @dev The address of $Fevr token.
-    address public baseToken;
-
-    /// @dev The address of uniswap router.
-    address public dexRouter;
-
-    /// @dev total DeckLP count that exist.
-    uint256 public totalDeckLPCnt;
-
-    /// @dev The id of ServiceFee.
-    uint256 public serviceFeeId;
-
-    /// @dev The id of deckLpId. deckLpId = tokenId.
-    uint256 public deckLpId;
-
-### Constructor 
-
-    constructor (
-        address _baseToken, // the token for the lending/borrowing associated to a specific deckMaster contract
-        address _collectionManager, // the collection manager contract address
-        address _serviceManager, // the service manager contract address
-        address _dexRouter // the dex router address for buy n' burn
-        
+Borrow and Lend NFTs and Bundles.
 
 ### Functions
 
 | Function  | Purpose | Function Type |
 | ------------- | ------------- | ------------- | 
-| setCollectionAmountForBundle  | Sets/change the total nft amount for each bundle | Admin |
+| setTreasury  | Sets the Treasury contract address | Admin |
 | setAcceptableERC20  | Sets the accepted ERC20s | Admin |
-| getAllowedTokens  | Checks the accepted ERC20s | Public |
-| getAllowedCollections  | Checks the accepted collection addresses | Public |
-| getAllowedBundles  | Checks the accepted bundles addresses | Public |
+| setApprovedCollections  | Sets the approved NFTs contract addresses | Admin |
+| enableLBundleMode  | Enables/disables bundles to be created in Lending | Admin |
+| setNLBundles  | Sets the non-Lending bundles contract addresses | Admin |
+| setRFGameFee  | sets the game fee charged by RF on games (%) | Admin |
+| setServiceFee  | sets the fee charged by RF on borrow (uint) | Admin |
+| configAmountForBundle  | Sets the min and max NFTs per bundle | Admin |
+| setDepositFlag  | Enable/Disable deposits of NFTs from certain collections | Admin |
+| depositCollection  | Deposits NFTs into a LBundle (bundle created on Lending) | Admin |
 | setAcceptableCollections  | sets the accepted collections addresses | Admin |
-| setAcceptableBundles  | sets the accepted bundles addresses | Admin |
-| setServiceFee  | Sets the serviceFee charged by RealFevr | Admin |
-| linkServiceFee  | Links service fee to a collection by address | Admin |
-| setDepositFlag  | Sets the flag for deposits by address and limit | Admin |
-| depositCollections  | creates and deposits the bundle, depositor gets deckLp  | Public |
-| depositBundle  | Gets the information on the bundle, depositor gets deckLp  | Public |
-| withdrawCollections  | If the owner is the depositer of collection/bundle then he can withdraw  | Public |
-| lend  | lends a deckLp | Public |
-| borrow  | lends a deckLp  | Public |
-| winningCalculation  | calculates winnings for deckLp | Admin |
-| claimWinnings  | let's the borrower and lender claim winnings | Public |
-| claimInterest  | let's the lender claim interest | Public |
-| buybackFeeTake  | flag to activate the buy  back fee | Public |
-| setBuybackFee  | creates a buy back and burn fee for certain erc20 | Public |
-| getReceiptDeckLpInfo  | checks the receipt of deckLp information | Public |
-| getDeckLpInfo  | checks the deckLp information | Public |
-| getAllDeckCount  | checks the deckLp information | Public |
-| getServiceFeeInfo  | Sets acceptable NFT collection addresses to create a bundle | Admin |
-| getLockedERC20  | Sets acceptable bundle addresses from bundles contract | Admin |
+| depositNLBundle  | Deposit approved bundles into LendingMaster | Admin |
+| mergeDeposits  | Merge deposits into a new LBundle | Admin |
+| lend  | Lends a deposited bundle of NFTs | Admin |
+| borrow  | Borrows the deposited bundle of NFTs (they do not leave the contract) | Admin |
+| withdrawCollection  | Withdraws deposited bundles or NFTs | Public |
+| getUserDepositedIds  | Gets depositedIds per address | Public |
+| getUserListedIds  | Gets the listed deposits per address  | Public |
+| getUserNotListedIds  | Gets the non-listed deposits per address | Public |
+| getTotalBorrowedIds  | Gets total borrowed deposits | Public |
+| getDepositInfo  | Gets information about deposit by depositId | Public |
+| getCollectionInfo  | Gets information of collection by depositId | Public |
+| getAllowedNLBundles  | Gets allowed Bundles contracts addresses | Public |
+| getAllowedTokens  | Gets allowed ERC20 tokens addresses | Public |
+| getAllowedCollections  | Gets allowed collections by addresses | Public |
+| getTotalListedCollections  | Gets all listed collections by addresses | Public |
+| transferFrom  | Trasnfers ERC20 between addresses | Internal |
+| withdrawDeck  | Withdraws the deposit | Internal |
+| takeServiceFee  | Transfers tokens or bnb to treasury contract | Internal |
+| checkCollection  | Get collection information by address and tokenId | Internal |
+| checkAcceptedToken  | Gets accepted ERC20s | Internal |
+| checkAcceptedCollection  | Gets accepted ERC721 | Internal |
+| transferBNB  | Transfers BNB to address | Internal |
 
 ### Logic
 
@@ -154,28 +328,9 @@ Bundle NFTs together. Lend and borrow deckLps.
 - Let users deposit NFTs or Bundles lend, borrow and receive a receipt (deckLp).
 - Each bundle for lending has its own rules in terms of pre-payment, fees, etc.
 
-## CollectionManager
+## Treasury.Sol 
 
-Bundle NFTs together.
-
-### Structure
-
-    contract CollectionManager is Ownable, ICollectionManager {
-    using EnumerableSet for EnumerableSet.AddressSet;
-
-    EnumerableSet.AddressSet private allowedTokens;
-    EnumerableSet.AddressSet private allowedCollections;
-    EnumerableSet.AddressSet private allowedBundles;
-
-    mapping(address => uint256) public depositLimitations;
-
-    address public deckMaster;
-    uint256 public collectionAmountForBundle = 50;
-
-    modifier onlyDeckMaster {
-        require (msg.sender == deckMaster, "Only DeckMaster");
-        _;
-    }
+Manage funds from Borrowing/Lending.
 
 ### Functions
 
@@ -204,45 +359,3 @@ Bundle NFTs together.
 - Let users deposit NFTs or Bundles lend, borrow and receive a receipt (deckLp).
 - Each bundle for lending has its own rules in terms of pre-payment, fees, etc.
 
-## ServiceManager
-
-Sets the marketplace rules
-
-### Structure
-
-    contract ServiceManager is Ownable, IServiceManager {
-
-    mapping(uint256 => DeckLPInfo) private deckLpInfos;
-    mapping(uint256 => LendInfo) private lendInfos;
-
-    address public deckMaster;
-    
-    modifier onlyDeckMaster {
-        require (msg.sender == deckMaster, "Only DeckMaster");
-        _;
-    }
-
-
-### Functions
-
-| Function  | Purpose | Function Type |
-| ------------- | ------------- | ------------- | 
-| setDeckMaster  | Sets/change he Deck master contract address | Admin |
-| addDepositedCollections  | Sets the nft amount required to form a bundle | Admin |
-| addDepositedBundle  | Checks the accepted bundles addresses | Public |
-| removeWithdrawedCollections  | removes withdrawed collections from contract | Admin |
-| listDeckLpLend  | Lends deckLp | Public |
-| borrowDeckLp  | Borrows deckLp  | Public |
-| checkDeckLpAvailableForClaimInterest  | Checks if a deckLp can claim interest  | Public |
-| getDeckLendInfo  | checks deckLp by deckLpId| Public |
-| isLendDeckLp  | Checks if a deck is being lent out | Public |
-| getReceiptDeckLpInfo  | Checks the receipt deckLp information | Admin |
-| getDeckLpInfo  | Checks the deckLp information (borrower, lender, winnings) | Public |
-
-### Logic
-
-- Set the deck master contraact (address).
-- Set the accepted NFT contracts (collections).
-- Set the accepted Bundle contracts (bundle).
-- Let users deposit NFTs or Bundles lend, borrow and receive a receipt (deckLp).
-- Each bundle for lending has its own rules in terms of pre-payment, fees, etc.
