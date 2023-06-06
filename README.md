@@ -282,6 +282,75 @@ Below you find the list of functions and the purpose of each, as well as logic t
 
 Borrow and Lend NFTs and Bundles.
 
+### Constructor
+
+    contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
+    using SafeERC20 for IERC20;
+    using EnumerableSet for EnumerableSet.AddressSet;
+    using EnumerableSet for EnumerableSet.UintSet;
+
+    EnumerableSet.AddressSet private allowedTokens;
+    EnumerableSet.AddressSet private allowedCollections;
+    EnumerableSet.AddressSet private allowedNLBundles;
+
+    /// @notice Deposited depositIds totally.
+    EnumerableSet.UintSet private totalDepositedIds;
+
+    /// @notice Total borrowed depositIds.
+    EnumerableSet.UintSet private totalBorrowedIds;
+
+    /// @notice depositIds listed for lending totally.
+    EnumerableSet.UintSet private totalListedIds;
+
+    /// @notice deposited depositIds of each user.
+    mapping(address => EnumerableSet.UintSet) private depositedIdsPerUser;
+
+    /// @notice depositIds listed for lending of each user.
+    mapping(address => EnumerableSet.UintSet) private listedIdsPerUser;
+
+    /// @notice borrowed depositIds of each user.
+    mapping(address => EnumerableSet.UintSet) private borrowedIdsPerUser;
+
+    /// @dev Lending req for each depositId.
+    mapping(uint256 => LendingReq) public lendingReqsPerDeck;
+
+    /// The information of ServiceFee by paymentToken.
+    mapping(address => ServiceFee) public serviceFees;
+
+    /// The information of each deck.
+    mapping(uint256 => DepositInfo) private depositInfo;
+
+    /// Collection information per depositId
+    mapping(uint256 => CollectionInfo) private collectionInfoPerDeck;
+
+    /// The max amount of collection that can be deposited.
+    mapping(address => DepositLimitInfo) public depositLimitations;
+
+    /// @dev The address of treasury;
+    address public treasury;
+
+    uint256 public depositId;
+
+    /// @dev Max collection amount that LBundle can contain.
+    uint256 public maxAmountForBundle;
+
+    uint256 public minAmountForBundle;
+
+    /// @dev The address to burn tokens.
+    address constant DEAD = 0x000000000000000000000000000000000000dEaD;
+
+    uint16 public FIXED_POINT = 1000;
+
+    uint16 public RF_GAME_FEE = 50; // 5%
+
+    bool public LBundleMode;
+
+    constructor(address _treasury) {
+        require(_treasury != address(0), "zero treasury address");
+        treasury = _treasury;
+        depositId = 1;
+    }
+
 ### Functions
 
 | Function  | Purpose | Function Type |
@@ -335,30 +404,46 @@ Borrow and Lend NFTs and Bundles.
 
 Manage funds from Borrowing/Lending.
 
+### Constructor
+
+    contract Treasury is Ownable, ITreasury {
+    using SafeERC20 for IERC20;
+
+    /// @dev The address to burn tokens.
+    address constant DEAD = 0x000000000000000000000000000000000000dEaD;
+
+    address public fevrToken;
+
+    address public dexRouter;
+
+    address public lendingMaster;
+
+    uint16 public FIXED_POINT = 1000;
+
+    modifier onlyLendingMaster() {
+        require(msg.sender == lendingMaster, "only lendingMaster");
+        _;
+    }
+
+    constructor(address _fevrToken, address _dexRouter) {
+        require(_fevrToken != address(0), "zero fevr token address");
+        require(_dexRouter != address(0), "zero dex router address");
+        fevrToken = _fevrToken;
+        dexRouter = _dexRouter;
+    }
+
 ### Functions
 
 | Function  | Purpose | Function Type |
 | ------------- | ------------- | ------------- | 
-| setDeckMaster  | Sets/change he Deck master contract address | Admin |
-| setCollectionAmountForBundle  | Sets the nft amount required to form a bundle | Admin |
-| setAcceptableERC20  | Checks the accepted ERC20s | Public |
-| setAcceptableCollections  | Checks the accepted collection addresses | Public |
-| setAcceptableBundle  | Checks the accepted bundles addresses | Public |
-| setDepositFlag  | Sets the flag for deposits by address and limit | Admin |
-| depositCollections  | creates and deposits the bundle, depositor gets deckLp  | Public |
-| isAllowedToken  | checks if a token is accepted  | Public |
-| checkAllowedCollection  | Checks allowed collections  | Public |
-| checkCollectionAvailableForDeposit  | Checks if a collection and specific ndts are available for lending | Public |
-| getAllowedTokens  | Checks the accepted ERC20s  | Public |
-| getAllowedCollections  | Checks the accepted collections | Admin |
-| getAllowedBundles  | Checks the accepted bundles | Public |
+| setLendingMaster  | Sets LendingMaster contract address | Admin |
+| takeServiceFee  | Transfers the non-FEVR fees into FEVR and burns the tokens | Admin |
+| withdrawToken  | Withdraws tokens | Public |
+| transferBNB  | Withdraw BNB | Public |
 
 ### Logic
 
-- Set the deck master contraact (address).
-- Set the accepted NFT contracts (collections).
-- Set the accepted Bundle contracts (bundle).
-- Set the accepted ERC20s.
-- Let users deposit NFTs or Bundles lend, borrow and receive a receipt (deckLp).
-- Each bundle for lending has its own rules in terms of pre-payment, fees, etc.
+- Set the LendingMaster contract address
+- Swap non-FEVR tokens for FEVR and burn FEVR
+- Withdraw tokens or BNB
 
