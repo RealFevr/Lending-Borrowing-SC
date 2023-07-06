@@ -67,9 +67,6 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
 
     uint256 public minAmountForBundle;
 
-    /// @dev The address to burn tokens.
-    address constant DEAD = 0x000000000000000000000000000000000000dEaD;
-
     uint16 public FIXED_POINT = 1000;
 
     uint16 public RF_GAME_FEE = 50; // 5%
