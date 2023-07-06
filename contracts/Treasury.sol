@@ -56,6 +56,10 @@ contract Treasury is Ownable, ITreasury {
                 path[0] = WETH;
                 path[1] = fevrToken;
                 _paymentToken = WETH;
+            } else if (_paymentToken == WETH) {
+                path = new address[](2);
+                path[0] = WETH;
+                path[1] = fevrToken;
             } else {
                 path = new address[](3);
                 path[0] = _paymentToken;
