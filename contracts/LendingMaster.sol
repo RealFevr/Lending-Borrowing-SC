@@ -236,7 +236,6 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                     Utils.genAddressArrayWithArg(collection),
                     Utils.genUintArrayWithArg(tokenId)
                 );
-                depositedIdsPerUser[sender].add(depositId);
                 totalDepositedIds.add(depositId);
                 emit SingleCollectionDeposited(
                     collection,
@@ -308,7 +307,6 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             Utils.genUintArrayWithArg(_tokenId)
         );
 
-        depositedIdsPerUser[sender].add(depositId);
         totalDepositedIds.add(depositId);
 
         emit NLBundleDeposited(_bundleAddress, _tokenId, depositId++);
