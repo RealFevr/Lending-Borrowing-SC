@@ -258,7 +258,6 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                 _collections,
                 _tokenIds
             );
-            depositedIdsPerUser[sender].add(depositId);
             totalDepositedIds.add(depositId);
 
             emit LBundleDeposited(_collections, _tokenIds, depositId++);
