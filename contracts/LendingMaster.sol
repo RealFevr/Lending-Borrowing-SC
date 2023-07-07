@@ -426,7 +426,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             if (req.prepay) {
                 if (req.paymentToken == address(0)) {
                     require(
-                        msg.value >= req.prepayAmount,
+                        msg.value == req.prepayAmount,
                         "not enough for prepayment"
                     );
                     _transferBNB(info.owner, req.prepayAmount);
