@@ -224,7 +224,8 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             IERC721(collection).transferFrom(sender, address(this), tokenId);
 
             if (!_isLBundleMode) {
-                depositedIdsPerUser[sender].add(depositId);
+                bool added = depositedIdsPerUser[sender].add(depositId);
+                require(added, "fails when adding deposit id");
                 depositInfo[depositId] = DepositInfo(
                     sender,
                     address(0),
@@ -236,8 +237,9 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                     Utils.genAddressArrayWithArg(collection),
                     Utils.genUintArrayWithArg(tokenId)
                 );
-                depositedIdsPerUser[sender].add(depositId);
-                totalDepositedIds.add(depositId);
+                // depositedIdsPerUser[sender].add(depositId);
+                added = totalDepositedIds.add(depositId);
+                require(added, "fails when adding deposit id");
                 emit SingleCollectionDeposited(
                     collection,
                     tokenId,
@@ -247,7 +249,8 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         }
 
         if (_isLBundleMode) {
-            depositedIdsPerUser[sender].add(depositId);
+            bool added = depositedIdsPerUser[sender].add(depositId);
+            require(added, "fails when adding deposit id");
             depositInfo[depositId] = DepositInfo(
                 sender,
                 address(0),
@@ -259,8 +262,9 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                 _collections,
                 _tokenIds
             );
-            depositedIdsPerUser[sender].add(depositId);
-            totalDepositedIds.add(depositId);
+            // depositedIdsPerUser[sender].add(depositId);
+            added = totalDepositedIds.add(depositId);
+            require(added, "fails when adding deposit id");
 
             emit LBundleDeposited(_collections, _tokenIds, depositId++);
         }
@@ -294,7 +298,8 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
 
         IERC721(_bundleAddress).transferFrom(sender, address(this), _tokenId);
 
-        depositedIdsPerUser[sender].add(depositId);
+        bool added = depositedIdsPerUser[sender].add(depositId);
+        require(added, "fails when adding deposit id");
         depositInfo[depositId] = DepositInfo(
             sender,
             address(0),
@@ -308,8 +313,9 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             Utils.genUintArrayWithArg(_tokenId)
         );
 
-        depositedIdsPerUser[sender].add(depositId);
-        totalDepositedIds.add(depositId);
+        // depositedIdsPerUser[sender].add(depositId);
+        added = totalDepositedIds.add(depositId);
+        require(added, "fails when adding deposit id");
 
         emit NLBundleDeposited(_bundleAddress, _tokenId, depositId++);
     }
@@ -338,11 +344,15 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                 !listedIdsPerUser[sender].contains(_depositId),
                 "listed for lend"
             );
-            depositedIdsPerUser[sender].remove(_depositId);
-            totalDepositedIds.remove(_depositId);
+            bool removed = depositedIdsPerUser[sender].remove(_depositId);
+            require(removed, "fails when removing deposit id");
+            removed = totalDepositedIds.remove(_depositId);
+            require(removed, "fails when removing deposit id");
         }
-        depositedIdsPerUser[sender].add(depositId);
-        listedIdsPerUser[sender].add(depositId);
+        bool added = depositedIdsPerUser[sender].add(depositId);
+        require(added, "fails when adding deposit id");
+        added = listedIdsPerUser[sender].add(depositId);
+        require(added, "fails when adding deposit id");
         depositInfo[depositId] = DepositInfo(
             sender,
             address(0),
@@ -350,7 +360,8 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             0,
             _depositIds
         );
-        totalDepositedIds.add(depositId++);
+        added = totalDepositedIds.add(depositId++);
+        require(added, "fails when adding deposit id");
         emit LBundleMade(_depositIds);
     }
 
@@ -392,8 +403,10 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                 "invalid prepay settings"
             );
             lendingReqsPerDeck[_depositId] = req;
-            listedIdsPerUser[sender].add(_depositId);
-            totalListedIds.add(_depositId);
+            bool added = listedIdsPerUser[sender].add(_depositId);
+            require(added, "fails when adding deposit id");
+            added = totalListedIds.add(_depositId);
+            require(added, "fails when adding deposit id");
         }
         emit Lent(_depositIds, _lendingReqs);
     }
@@ -452,10 +465,12 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             info.startTime = startTime;
             info.endTime = endTime;
             if (!borrowedIdsPerUser[sender].contains(_depositId)) {
-                borrowedIdsPerUser[sender].add(_depositId);
+                bool added = borrowedIdsPerUser[sender].add(_depositId);
+                require(added, "fails when adding deposit id");
             }
             if (!totalBorrowedIds.contains(_depositId)) {
-                totalBorrowedIds.add(_depositId);
+                bool added = totalBorrowedIds.add(_depositId);
+                require(added, "fails when adding deposit id");
             }
         }
         uint256 averageGameFee = totalGameFee / (borrowedIds.length + length);
@@ -688,11 +703,15 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                 collectionInfo.tokenIds[j]
             );
         }
-        depositedIdsPerUser[_owner].remove(_depositId);
-        totalDepositedIds.remove(_depositId);
+        bool removed = depositedIdsPerUser[_owner].remove(_depositId);
+        require(removed, "fails when removing deposit id");
+        removed = totalDepositedIds.remove(_depositId);
+        require(removed, "fails when removing deposit id");
         if (listedIdsPerUser[_owner].contains(_depositId)) {
-            listedIdsPerUser[_owner].remove(_depositId);
-            totalListedIds.remove(_depositId);
+            removed = listedIdsPerUser[_owner].remove(_depositId);
+            require(removed, "fails when removing deposit id");
+            removed = totalListedIds.remove(_depositId);
+            require(removed, "fails when removing deposit id");
         }
     }
 

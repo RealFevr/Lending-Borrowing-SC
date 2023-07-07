@@ -64,7 +64,8 @@ contract Treasury is Ownable, ITreasury {
             }
 
             uint256 beforeBal = IERC20(fevrToken).balanceOf(address(this));
-            IERC20(_paymentToken).approve(dexRouter, _amount);
+            bool approved = IERC20(_paymentToken).approve(dexRouter, _amount);
+            require(approved, "dex approval failed");
             IUniswapV2Router02(dexRouter)
                 .swapExactTokensForTokensSupportingFeeOnTransferTokens(
                     _amount,
