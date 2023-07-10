@@ -298,8 +298,6 @@ contract LendingMaster is
             "exceeds to depositLimitation"
         );
 
-        IERC721(_bundleAddress).transferFrom(sender, address(this), _tokenId);
-
         depositedIdsPerUser[sender].add(depositId);
         depositInfo[depositId] = DepositInfo(
             sender,
@@ -318,6 +316,8 @@ contract LendingMaster is
         totalDepositedIds.add(depositId);
 
         emit NLBundleDeposited(_bundleAddress, _tokenId, depositId++);
+
+        IERC721(_bundleAddress).transferFrom(sender, address(this), _tokenId);
     }
 
     /// @inheritdoc ILendingMaster
