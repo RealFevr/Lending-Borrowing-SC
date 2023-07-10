@@ -6,6 +6,10 @@ interface ITreasury {
     /// @dev Only owner can call this function.
     function setLendingMaster(address _lendingMaster) external;
 
+    /// @notice Set DEX router address.
+    /// @dev Only owner can call this function.
+    function setDexRouter(address _dexRouter) external;
+
     /// @notice Take service fee.
     /// @dev Only lendingMaster can call this function.
     function takeServiceFee(

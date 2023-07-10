@@ -41,6 +41,13 @@ contract Treasury is Ownable, ITreasury {
     }
 
     /// @inheritdoc ITreasury
+    function setDexRouter(address _dexRouter) external override onlyOwner {
+        require(_dexRouter != address(0), "invalid zero address");
+        require(_dexRouter != dexRouter, "dex router already set");
+        dexRouter = _dexRouter;
+    }
+
+    /// @inheritdoc ITreasury
     function takeServiceFee(
         address _paymentToken,
         uint256 _amount,
