@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 import "./interfaces/ILendingMaster.sol";
 import "./interfaces/ITreasury.sol";
@@ -15,7 +16,12 @@ import "./interfaces/IUniswapRouter02.sol";
 import "./interfaces/IWBNB.sol";
 import "./libraries/Utils.sol";
 
-contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
+contract LendingMaster is
+    ERC721Holder,
+    Ownable,
+    ILendingMaster,
+    ReentrancyGuard
+{
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.UintSet;
@@ -204,7 +210,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         address[] memory _collections,
         uint256[] memory _tokenIds,
         bool _isLBundleMode
-    ) external override {
+    ) external override nonReentrant {
         address sender = msg.sender;
         uint256 length = Utils.compareAddressArrayLength(
             _collections,
@@ -217,12 +223,29 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         );
         require(!_isLBundleMode || LBundleMode, "LBundleMode disabled");
 
+        if (_isLBundleMode) {
+            depositedIdsPerUser[sender].add(depositId);
+            depositInfo[depositId] = DepositInfo(
+                sender,
+                address(0),
+                0,
+                0,
+                Utils.genUintArrayWithArg(depositId)
+            );
+            collectionInfoPerDeck[depositId] = CollectionInfo(
+                _collections,
+                _tokenIds
+            );
+            depositedIdsPerUser[sender].add(depositId);
+            totalDepositedIds.add(depositId);
+
+            emit LBundleDeposited(_collections, _tokenIds, depositId++);
+        }
+
         for (uint256 i = 0; i < length; i++) {
             address collection = _collections[i];
             uint256 tokenId = _tokenIds[i];
             _checkCollection(collection, tokenId);
-            IERC721(collection).transferFrom(sender, address(this), tokenId);
-
             if (!_isLBundleMode) {
                 depositedIdsPerUser[sender].add(depositId);
                 depositInfo[depositId] = DepositInfo(
@@ -244,25 +267,8 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                     depositId++
                 );
             }
-        }
 
-        if (_isLBundleMode) {
-            depositedIdsPerUser[sender].add(depositId);
-            depositInfo[depositId] = DepositInfo(
-                sender,
-                address(0),
-                0,
-                0,
-                Utils.genUintArrayWithArg(depositId)
-            );
-            collectionInfoPerDeck[depositId] = CollectionInfo(
-                _collections,
-                _tokenIds
-            );
-            depositedIdsPerUser[sender].add(depositId);
-            totalDepositedIds.add(depositId);
-
-            emit LBundleDeposited(_collections, _tokenIds, depositId++);
+            IERC721(collection).transferFrom(sender, address(this), tokenId);
         }
     }
 
@@ -399,7 +405,9 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     }
 
     /// @inheritdoc ILendingMaster
-    function borrow(uint256[] memory _depositIds) external payable override {
+    function borrow(
+        uint256[] memory _depositIds
+    ) external payable override nonReentrant {
         address sender = msg.sender;
         uint256 startTime = block.timestamp;
         (
@@ -409,6 +417,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         ) = getUserBorrowedIds(sender);
         uint256 length = Utils.checkUintArray(_depositIds);
 
+        // CHECKS AND EFFECTS
         address lender = depositInfo[_depositIds[0]].owner;
         for (uint256 i = 0; i < length; i++) {
             uint256 _depositId = _depositIds[i];
@@ -423,6 +432,30 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             uint256 endTime = startTime + req.lendDuration * 1 days;
             totalWinningRate += req.winningRateForBorrower;
             totalGameFee += req.gameFee;
+
+            info.borrower = sender;
+            info.startTime = startTime;
+            info.endTime = endTime;
+            if (!borrowedIdsPerUser[sender].contains(_depositId)) {
+                borrowedIdsPerUser[sender].add(_depositId);
+            }
+            if (!totalBorrowedIds.contains(_depositId)) {
+                totalBorrowedIds.add(_depositId);
+            }
+        }
+
+        uint256 averageGameFee = totalGameFee / (borrowedIds.length + length);
+        require(
+            totalWinningRate + averageGameFee <= FIXED_POINT,
+            "over max DistRate"
+        );
+        emit Borrowed(_depositIds);
+
+        // INTERACTIONS
+        for (uint256 i = 0; i < length; ++i) {
+            uint256 _depositId = _depositIds[i];
+            DepositInfo memory info = depositInfo[_depositId];
+            LendingReq memory req = lendingReqsPerDeck[_depositId];
             if (req.prepay) {
                 if (req.paymentToken == address(0)) {
                     require(
@@ -447,23 +480,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             }
 
             _takeServiceFee(sender, req.paymentToken);
-
-            info.borrower = sender;
-            info.startTime = startTime;
-            info.endTime = endTime;
-            if (!borrowedIdsPerUser[sender].contains(_depositId)) {
-                borrowedIdsPerUser[sender].add(_depositId);
-            }
-            if (!totalBorrowedIds.contains(_depositId)) {
-                totalBorrowedIds.add(_depositId);
-            }
         }
-        uint256 averageGameFee = totalGameFee / (borrowedIds.length + length);
-        require(
-            totalWinningRate + averageGameFee <= FIXED_POINT,
-            "over max DistRate"
-        );
-        emit Borrowed(_depositIds);
     }
 
     /// @inheritdoc ILendingMaster
