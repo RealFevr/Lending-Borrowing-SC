@@ -680,18 +680,18 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             _depositId
         ];
 
+        depositedIdsPerUser[_owner].remove(_depositId);
+        totalDepositedIds.remove(_depositId);
+        if (listedIdsPerUser[_owner].contains(_depositId)) {
+            listedIdsPerUser[_owner].remove(_depositId);
+            totalListedIds.remove(_depositId);
+        }
         for (uint256 j = 0; j < collectionInfo.collections.length; j++) {
             IERC721(collectionInfo.collections[j]).transferFrom(
                 address(this),
                 _owner,
                 collectionInfo.tokenIds[j]
             );
-        }
-        depositedIdsPerUser[_owner].remove(_depositId);
-        totalDepositedIds.remove(_depositId);
-        if (listedIdsPerUser[_owner].contains(_depositId)) {
-            listedIdsPerUser[_owner].remove(_depositId);
-            totalListedIds.remove(_depositId);
         }
     }
 
