@@ -6,6 +6,13 @@ interface ITreasury {
     /// @dev Only owner can call this function.
     function setLendingMaster(address _lendingMaster) external;
 
+    /// @notice Set slippage tolerance.
+    /// @notice We are calculating `amountWithSlippage = expectedAmount * slippage / 1000.
+    /// @notice So, if we set slippage to 1000, it means no slippage at all, because 1000 / 1000 = 1
+    /// @notice If we want a 0.3% slippage, we need to pass the value 997 to the function.
+    /// @dev Only owner can call this function.
+    function setSlippage(uint256 _slippage) external;
+
     /// @notice Take service fee.
     /// @dev Only lendingMaster can call this function.
     function takeServiceFee(
