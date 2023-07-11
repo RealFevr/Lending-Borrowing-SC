@@ -16,7 +16,7 @@ contract Treasury is Ownable, ITreasury {
 
     address public immutable fevrToken;
 
-    address public immutable dexRouter;
+    address public dexRouter;
 
     address public lendingMaster;
 
