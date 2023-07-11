@@ -91,6 +91,10 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             _maxCollectionsAtOnce > 0,
             "maximum managed collections should be greater than zero"
         );
+        require(
+            _maxCollectionsAtOnce != MAX_COLLECTIONS_AT_ONCE,
+            "maximum managed collections already set"
+        );
         MAX_COLLECTIONS_AT_ONCE = _maxCollectionsAtOnce;
     }
 
