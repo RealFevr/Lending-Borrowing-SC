@@ -67,9 +67,6 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
 
     uint256 public minAmountForBundle;
 
-    /// @dev The address to burn tokens.
-    address constant DEAD = 0x000000000000000000000000000000000000dEaD;
-
     uint16 public constant FIXED_POINT = 1000;
 
     uint16 public RF_GAME_FEE = 50; // 5%
@@ -410,6 +407,9 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         uint256 length = Utils.checkUintArray(_depositIds);
 
         address lender = depositInfo[_depositIds[0]].owner;
+        
+        require(lender != sender, "Lender and borrower cannot be the same");
+
         for (uint256 i = 0; i < length; i++) {
             uint256 _depositId = _depositIds[i];
             DepositInfo storage info = depositInfo[_depositId];
