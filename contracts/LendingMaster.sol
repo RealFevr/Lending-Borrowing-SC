@@ -410,6 +410,9 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         uint256 length = Utils.checkUintArray(_depositIds);
 
         address lender = depositInfo[_depositIds[0]].owner;
+        
+        require(lender != sender, "Lender and borrower cannot be the same");
+
         for (uint256 i = 0; i < length; i++) {
             uint256 _depositId = _depositIds[i];
             DepositInfo storage info = depositInfo[_depositId];
