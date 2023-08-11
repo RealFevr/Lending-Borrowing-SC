@@ -14,9 +14,9 @@ contract Treasury is Ownable, ITreasury {
     /// @dev The address to burn tokens.
     address constant DEAD = 0x000000000000000000000000000000000000dEaD;
 
-    address public fevrToken;
+    address public immutable fevrToken;
 
-    address public dexRouter;
+    address public immutable dexRouter;
 
     address public lendingMaster;
 
