@@ -20,7 +20,7 @@ contract Treasury is Ownable, ITreasury {
 
     address public lendingMaster;
 
-    uint16 public FIXED_POINT = 1000;
+    uint16 public constant FIXED_POINT = 1000;
 
     modifier onlyLendingMaster() {
         require(msg.sender == lendingMaster, "only lendingMaster");
