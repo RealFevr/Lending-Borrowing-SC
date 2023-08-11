@@ -22,6 +22,10 @@ contract Treasury is Ownable, ITreasury {
 
     uint16 public constant FIXED_POINT = 1000;
 
+    // @dev We are calculating `amountWithSlippage = expectedAmount * slippage / 1000.
+    // @dev So, if we set slippage to 1000, it means no slippage at all, because 1000 / 1000 = 1.
+    uint256 private SLIPPAGE = 1000;
+
     modifier onlyLendingMaster() {
         require(msg.sender == lendingMaster, "only lendingMaster");
         _;
@@ -32,6 +36,13 @@ contract Treasury is Ownable, ITreasury {
         require(_dexRouter != address(0), "zero dex router address");
         fevrToken = _fevrToken;
         dexRouter = _dexRouter;
+    }
+
+    /// @inheritdoc ITreasury
+    function setSlippage(uint256 _slippage) external onlyOwner {
+        require(_slippage > 0 && _slippage <= 1000, "invalid slippage value");
+        require(_slippage != SLIPPAGE, "slippage value already set");
+        SLIPPAGE = _slippage;
     }
 
     /// @inheritdoc ITreasury
@@ -63,13 +74,15 @@ contract Treasury is Ownable, ITreasury {
                 path[1] = WETH;
                 path[2] = fevrToken;
             }
-
+            uint256 expectedAmount = IUniswapV2Router02(dexRouter)
+                .getAmountsOut(_amount, path)[path.length == 3 ? 2 : 1];
+            uint256 amountWithSlippage = (expectedAmount * SLIPPAGE) / 1000;
             uint256 beforeBal = IERC20(fevrToken).balanceOf(address(this));
             IERC20(_paymentToken).approve(dexRouter, _amount);
             IUniswapV2Router02(dexRouter)
                 .swapExactTokensForTokensSupportingFeeOnTransferTokens(
                     _amount,
-                    0,
+                    amountWithSlippage,
                     path,
                     address(this),
                     block.timestamp
