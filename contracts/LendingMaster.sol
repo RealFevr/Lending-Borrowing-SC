@@ -459,8 +459,8 @@ contract LendingMaster is
             if (req.prepay) {
                 if (req.paymentToken == address(0)) {
                     require(
-                        msg.value >= req.prepayAmount,
-                        "not enough for prepayment"
+                        msg.value == req.prepayAmount,
+                        "invalid amount for prepayment"
                     );
                     _transferBNB(info.owner, req.prepayAmount);
                 } else {
