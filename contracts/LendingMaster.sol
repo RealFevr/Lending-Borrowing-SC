@@ -481,7 +481,7 @@ contract LendingMaster is
     ) external override {
         address sender = msg.sender;
         uint256 length = Utils.checkUintArray(_depositIds);
-
+        emit CollectionWithdrawn(_depositIds);
         for (uint256 i = 0; i < length; i++) {
             uint256 _depositId = _depositIds[i];
             DepositInfo memory info = depositInfo[_depositId];
@@ -498,7 +498,6 @@ contract LendingMaster is
                 _withdrawDeck(sender, info.depositIds[j]);
             }
         }
-        emit CollectionWithdrawn(_depositIds);
     }
 
     /// @inheritdoc ILendingMaster

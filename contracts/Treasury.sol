@@ -104,16 +104,15 @@ contract Treasury is Ownable, ITreasury {
                 (IERC20(_token).balanceOf(address(this)) > 0),
             "no withdrawable amount"
         );
-        uint256 claimableAmount;
+        uint256 claimableAmount = _token == address(0)
+            ? address(this).balance
+            : IERC20(_token).balanceOf(address(this));
+        emit TokenWithdrawn(_token, claimableAmount);
         if (_token == address(0)) {
-            claimableAmount = address(this).balance;
             _transferBNB(sender, claimableAmount);
         } else {
-            claimableAmount = IERC20(_token).balanceOf(address(this));
             IERC20(_token).safeTransfer(owner(), claimableAmount);
         }
-
-        emit TokenWithdrawn(_token, claimableAmount);
     }
 
     receive() external payable {}
