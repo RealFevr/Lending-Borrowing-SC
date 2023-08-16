@@ -77,12 +77,29 @@ contract LendingMaster is
 
     uint16 public RF_GAME_FEE = 50; // 5%
 
+    uint16 public maxCollectiblesAtOnce;
+
     bool public LBundleMode;
 
     constructor(address _treasury) {
         require(_treasury != address(0), "zero treasury address");
         treasury = _treasury;
         depositId = 1;
+        maxCollectiblesAtOnce = 100;
+    }
+
+    function setMaxCollectiblesAtOnce(
+        uint16 _maxCollectiblesAtOnce
+    ) external override onlyOwner {
+        require(
+            _maxCollectiblesAtOnce > 0,
+            "maximum managed collections should be greater than zero"
+        );
+        require(
+            _maxCollectiblesAtOnce != maxCollectiblesAtOnce,
+            "maximum managed collections already set"
+        );
+        maxCollectiblesAtOnce = _maxCollectiblesAtOnce;
     }
 
     /// @inheritdoc ILendingMaster
@@ -368,7 +385,10 @@ contract LendingMaster is
             _depositIds,
             _lendingReqs.length
         );
-
+        require(
+            length <= maxCollectiblesAtOnce,
+            "can not lend this amount at once"
+        );
         for (uint256 i = 0; i < length; i++) {
             uint256 _depositId = _depositIds[i];
             LendingReq memory req = _lendingReqs[i];
@@ -414,6 +434,10 @@ contract LendingMaster is
             uint256 totalGameFee
         ) = getUserBorrowedIds(sender);
         uint256 length = Utils.checkUintArray(_depositIds);
+        require(
+            length <= maxCollectiblesAtOnce,
+            "can not borrow this amount at once"
+        );
 
         address lender = depositInfo[_depositIds[0]].owner;
         
@@ -481,7 +505,13 @@ contract LendingMaster is
     ) external override {
         address sender = msg.sender;
         uint256 length = Utils.checkUintArray(_depositIds);
+        require(
+            length <= maxCollectiblesAtOnce,
+            "can not withdraw this amount at once"
+        );
+        
         emit CollectionWithdrawn(_depositIds);
+        
         for (uint256 i = 0; i < length; i++) {
             uint256 _depositId = _depositIds[i];
             DepositInfo memory info = depositInfo[_depositId];

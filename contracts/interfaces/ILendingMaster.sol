@@ -38,6 +38,11 @@ interface ILendingMaster {
         bool active;
     }
 
+    /// @notice Set maximum managed collections at the same time.
+    /// @notice This prevents potential denial of service due to unbounded loop iterations in lend(), borrow() and withdrawCollection() functions.
+    /// @dev Only owner can call this function.
+    function setMaxCollectiblesAtOnce(uint16 _maxCollectiblesAtOnce) external;
+
     /// @notice Set treasury contract address.
     /// @dev Only owner can call this function.
     function setTreasury(address _treasury) external;
