@@ -74,7 +74,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
 
     uint16 public RF_GAME_FEE = 50; // 5%
 
-    uint16 public MAX_COLLECTIONS_AT_ONCE;
+    uint16 public maxCollectiblesAtOnce;
 
     bool public LBundleMode;
 
@@ -82,20 +82,21 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         require(_treasury != address(0), "zero treasury address");
         treasury = _treasury;
         depositId = 1;
+        maxCollectiblesAtOnce = 100;
     }
 
-    function setMaxCollectionsAtOnce(
-        uint16 _maxCollectionsAtOnce
+    function setMaxCollectiblesAtOnce(
+        uint16 _maxCollectiblesAtOnce
     ) external override onlyOwner {
         require(
-            _maxCollectionsAtOnce > 0,
+            _maxCollectiblesAtOnce > 0,
             "maximum managed collections should be greater than zero"
         );
         require(
-            _maxCollectionsAtOnce != MAX_COLLECTIONS_AT_ONCE,
+            _maxCollectiblesAtOnce != maxCollectiblesAtOnce,
             "maximum managed collections already set"
         );
-        MAX_COLLECTIONS_AT_ONCE = _maxCollectionsAtOnce;
+        maxCollectiblesAtOnce = _maxCollectiblesAtOnce;
     }
 
     /// @inheritdoc ILendingMaster
@@ -381,7 +382,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             _lendingReqs.length
         );
         require(
-            length <= MAX_COLLECTIONS_AT_ONCE,
+            length <= maxCollectiblesAtOnce,
             "can not lend this amount at once"
         );
         for (uint256 i = 0; i < length; i++) {
@@ -428,7 +429,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         ) = getUserBorrowedIds(sender);
         uint256 length = Utils.checkUintArray(_depositIds);
         require(
-            length <= MAX_COLLECTIONS_AT_ONCE,
+            length <= maxCollectiblesAtOnce,
             "can not borrow this amount at once"
         );
 
@@ -496,7 +497,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         address sender = msg.sender;
         uint256 length = Utils.checkUintArray(_depositIds);
         require(
-            length <= MAX_COLLECTIONS_AT_ONCE,
+            length <= maxCollectiblesAtOnce,
             "can not withdraw this amount at once"
         );
         for (uint256 i = 0; i < length; i++) {
