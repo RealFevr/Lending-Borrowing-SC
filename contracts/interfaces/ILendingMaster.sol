@@ -101,12 +101,21 @@ interface ILendingMaster {
         uint256 _maxAmount
     ) external;
 
-    /// @notice Set deposit flag.
+    /// @notice Set collection deposit flag.
     /// @dev Only owner can call this function.
     /// @param _collectionAddress      The address of collection.
     /// @param _depositLimit    The min/max deposit collection count.
-    function setDepositFlag(
+    function setCollectionDepositFlag(
         address _collectionAddress,
+        DepositLimitInfo memory _depositLimit
+    ) external;
+
+    /// @notice Set NLBundle deposit flag.
+    /// @dev Only owner can call this function.
+    /// @param _nlBundleAddress      The address of collection.
+    /// @param _depositLimit    The min/max deposit collection count.
+    function setNLBundleDepositFlag(
+        address _nlBundleAddress,
         DepositLimitInfo memory _depositLimit
     ) external;
 

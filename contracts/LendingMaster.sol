@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 import "./interfaces/ILendingMaster.sol";
 import "./interfaces/ITreasury.sol";
@@ -15,7 +16,12 @@ import "./interfaces/IUniswapRouter02.sol";
 import "./interfaces/IWBNB.sol";
 import "./libraries/Utils.sol";
 
-contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
+contract LendingMaster is
+    ERC721Holder,
+    Ownable,
+    ILendingMaster,
+    ReentrancyGuard
+{
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.UintSet;
@@ -67,10 +73,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
 
     uint256 public minAmountForBundle;
 
-    /// @dev The address to burn tokens.
-    address constant DEAD = 0x000000000000000000000000000000000000dEaD;
-
-    uint16 public FIXED_POINT = 1000;
+    uint16 public constant FIXED_POINT = 1000;
 
     uint16 public RF_GAME_FEE = 50; // 5%
 
@@ -203,17 +206,21 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     }
 
     /// @inheritdoc ILendingMaster
-    function setDepositFlag(
+    function setNLBundleDepositFlag(
+        address _nlBundleAddress,
+        DepositLimitInfo memory _depositLimit
+    ) external override onlyOwner {
+        _checkAcceptedNLBundle(_nlBundleAddress);
+        _setDepositFlag(_nlBundleAddress, _depositLimit);
+    }
+
+    /// @inheritdoc ILendingMaster
+    function setCollectionDepositFlag(
         address _collectionAddress,
         DepositLimitInfo memory _depositLimit
     ) external override onlyOwner {
         _checkAcceptedCollection(_collectionAddress);
-        Utils.checkLimitConfig(
-            _depositLimit.minAmount,
-            _depositLimit.maxAmount
-        );
-        depositLimitations[_collectionAddress] = _depositLimit;
-        emit DepositFlagSet(_collectionAddress, _depositLimit);
+        _setDepositFlag(_collectionAddress, _depositLimit);
     }
 
     /// @inheritdoc ILendingMaster
@@ -221,7 +228,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         address[] memory _collections,
         uint256[] memory _tokenIds,
         bool _isLBundleMode
-    ) external override {
+    ) external override nonReentrant {
         address sender = msg.sender;
         uint256 length = Utils.compareAddressArrayLength(
             _collections,
@@ -253,7 +260,6 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                     Utils.genAddressArrayWithArg(collection),
                     Utils.genUintArrayWithArg(tokenId)
                 );
-                depositedIdsPerUser[sender].add(depositId);
                 totalDepositedIds.add(depositId);
                 emit SingleCollectionDeposited(
                     collection,
@@ -276,7 +282,6 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                 _collections,
                 _tokenIds
             );
-            depositedIdsPerUser[sender].add(depositId);
             totalDepositedIds.add(depositId);
 
             emit LBundleDeposited(_collections, _tokenIds, depositId++);
@@ -287,7 +292,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     function depositNLBundle(
         address _bundleAddress,
         uint256 _tokenId
-    ) external override {
+    ) external override nonReentrant {
         address sender = msg.sender;
         require(
             allowedNLBundles.contains(_bundleAddress),
@@ -309,8 +314,6 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             "exceeds to depositLimitation"
         );
 
-        IERC721(_bundleAddress).transferFrom(sender, address(this), _tokenId);
-
         depositedIdsPerUser[sender].add(depositId);
         depositInfo[depositId] = DepositInfo(
             sender,
@@ -325,10 +328,11 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             Utils.genUintArrayWithArg(_tokenId)
         );
 
-        depositedIdsPerUser[sender].add(depositId);
         totalDepositedIds.add(depositId);
 
         emit NLBundleDeposited(_bundleAddress, _tokenId, depositId++);
+
+        IERC721(_bundleAddress).transferFrom(sender, address(this), _tokenId);
     }
 
     /// @inheritdoc ILendingMaster
@@ -419,7 +423,9 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     }
 
     /// @inheritdoc ILendingMaster
-    function borrow(uint256[] memory _depositIds) external payable override {
+    function borrow(
+        uint256[] memory _depositIds
+    ) external payable override nonReentrant {
         address sender = msg.sender;
         uint256 startTime = block.timestamp;
         (
@@ -434,6 +440,9 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         );
 
         address lender = depositInfo[_depositIds[0]].owner;
+        
+        require(lender != sender, "Lender and borrower cannot be the same");
+
         for (uint256 i = 0; i < length; i++) {
             uint256 _depositId = _depositIds[i];
             DepositInfo storage info = depositInfo[_depositId];
@@ -500,6 +509,9 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             length <= maxCollectiblesAtOnce,
             "can not withdraw this amount at once"
         );
+        
+        emit CollectionWithdrawn(_depositIds);
+        
         for (uint256 i = 0; i < length; i++) {
             uint256 _depositId = _depositIds[i];
             DepositInfo memory info = depositInfo[_depositId];
@@ -516,7 +528,6 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
                 _withdrawDeck(sender, info.depositIds[j]);
             }
         }
-        emit CollectionWithdrawn(_depositIds);
     }
 
     /// @inheritdoc ILendingMaster
@@ -708,18 +719,19 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             _depositId
         ];
 
+        depositedIdsPerUser[_owner].remove(_depositId);
+        totalDepositedIds.remove(_depositId);
+        if (listedIdsPerUser[_owner].contains(_depositId)) {
+            listedIdsPerUser[_owner].remove(_depositId);
+            totalListedIds.remove(_depositId);
+        }
+
         for (uint256 j = 0; j < collectionInfo.collections.length; j++) {
             IERC721(collectionInfo.collections[j]).transferFrom(
                 address(this),
                 _owner,
                 collectionInfo.tokenIds[j]
             );
-        }
-        depositedIdsPerUser[_owner].remove(_depositId);
-        totalDepositedIds.remove(_depositId);
-        if (listedIdsPerUser[_owner].contains(_depositId)) {
-            listedIdsPerUser[_owner].remove(_depositId);
-            totalListedIds.remove(_depositId);
         }
     }
 
@@ -768,11 +780,29 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         address _collectionAddress
     ) internal view {
         require(
-            _collectionAddress != address(0) &&
-                (allowedCollections.contains(_collectionAddress) ||
-                    allowedNLBundles.contains(_collectionAddress)),
+            allowedCollections.contains(_collectionAddress),
             "not acceptable collection address"
         );
+    }
+
+    function _checkAcceptedNLBundle(address _nlBundleAddress) internal view {
+        require(
+            allowedNLBundles.contains(_nlBundleAddress),
+            "not acceptable NLBundle address"
+        );
+    }
+
+    function _setDepositFlag(
+        address _collectionAddress,
+        DepositLimitInfo memory _depositLimit
+    ) internal {
+        require(_collectionAddress != address(0), "invalid zero address");
+        Utils.checkLimitConfig(
+            _depositLimit.minAmount,
+            _depositLimit.maxAmount
+        );
+        depositLimitations[_collectionAddress] = _depositLimit;
+        emit DepositFlagSet(_collectionAddress, _depositLimit);
     }
 
     function _transferBNB(address _to, uint256 _amount) internal {
