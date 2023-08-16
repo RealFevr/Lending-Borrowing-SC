@@ -19,7 +19,7 @@ There are three types of bundles that are accepted to the LendingMaster contract
 
 ## Collections
 
-Represent bundles that are created through the Lending contract. A user deposits one or more NFTs adn the LBundle is created.
+Allows the user to deposit single NFTs to build a bundle. A user deposits one or more NFTs and the LBundle is created.
 
 ### depositCollections function
 
@@ -95,7 +95,7 @@ Represents bundles that were created by the LendingMaster contract.
 
 ### LBundles Function
 
-function depositNLBundle(
+    function depositNLBundle(
         address _bundleAddress,
         uint256 _tokenId
     ) external override {
