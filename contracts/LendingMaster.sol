@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 import "./interfaces/ILendingMaster.sol";
 import "./interfaces/ITreasury.sol";
@@ -15,7 +16,12 @@ import "./interfaces/IUniswapRouter02.sol";
 import "./interfaces/IWBNB.sol";
 import "./libraries/Utils.sol";
 
-contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
+contract LendingMaster is
+    ERC721Holder,
+    Ownable,
+    ILendingMaster,
+    ReentrancyGuard
+{
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.UintSet;
@@ -205,7 +211,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         address[] memory _collections,
         uint256[] memory _tokenIds,
         bool _isLBundleMode
-    ) external override {
+    ) external override nonReentrant {
         address sender = msg.sender;
         uint256 length = Utils.compareAddressArrayLength(
             _collections,
@@ -269,7 +275,7 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     function depositNLBundle(
         address _bundleAddress,
         uint256 _tokenId
-    ) external override {
+    ) external override nonReentrant {
         address sender = msg.sender;
         require(
             allowedNLBundles.contains(_bundleAddress),
@@ -291,8 +297,6 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             "exceeds to depositLimitation"
         );
 
-        IERC721(_bundleAddress).transferFrom(sender, address(this), _tokenId);
-
         depositedIdsPerUser[sender].add(depositId);
         depositInfo[depositId] = DepositInfo(
             sender,
@@ -310,6 +314,8 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         totalDepositedIds.add(depositId);
 
         emit NLBundleDeposited(_bundleAddress, _tokenId, depositId++);
+
+        IERC721(_bundleAddress).transferFrom(sender, address(this), _tokenId);
     }
 
     /// @inheritdoc ILendingMaster
@@ -397,7 +403,9 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     }
 
     /// @inheritdoc ILendingMaster
-    function borrow(uint256[] memory _depositIds) external payable override {
+    function borrow(
+        uint256[] memory _depositIds
+    ) external payable override nonReentrant {
         address sender = msg.sender;
         uint256 startTime = block.timestamp;
         (
@@ -682,18 +690,19 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
             _depositId
         ];
 
+        depositedIdsPerUser[_owner].remove(_depositId);
+        totalDepositedIds.remove(_depositId);
+        if (listedIdsPerUser[_owner].contains(_depositId)) {
+            listedIdsPerUser[_owner].remove(_depositId);
+            totalListedIds.remove(_depositId);
+        }
+
         for (uint256 j = 0; j < collectionInfo.collections.length; j++) {
             IERC721(collectionInfo.collections[j]).transferFrom(
                 address(this),
                 _owner,
                 collectionInfo.tokenIds[j]
             );
-        }
-        depositedIdsPerUser[_owner].remove(_depositId);
-        totalDepositedIds.remove(_depositId);
-        if (listedIdsPerUser[_owner].contains(_depositId)) {
-            listedIdsPerUser[_owner].remove(_depositId);
-            totalListedIds.remove(_depositId);
         }
     }
 
