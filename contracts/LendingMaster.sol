@@ -183,17 +183,21 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
     }
 
     /// @inheritdoc ILendingMaster
-    function setDepositFlag(
+    function setNLBundleDepositFlag(
+        address _nlBundleAddress,
+        DepositLimitInfo memory _depositLimit
+    ) external override onlyOwner {
+        _checkAcceptedNLBundle(_nlBundleAddress);
+        _setDepositFlag(_nlBundleAddress, _depositLimit);
+    }
+
+    /// @inheritdoc ILendingMaster
+    function setCollectionDepositFlag(
         address _collectionAddress,
         DepositLimitInfo memory _depositLimit
     ) external override onlyOwner {
         _checkAcceptedCollection(_collectionAddress);
-        Utils.checkLimitConfig(
-            _depositLimit.minAmount,
-            _depositLimit.maxAmount
-        );
-        depositLimitations[_collectionAddress] = _depositLimit;
-        emit DepositFlagSet(_collectionAddress, _depositLimit);
+        _setDepositFlag(_collectionAddress, _depositLimit);
     }
 
     /// @inheritdoc ILendingMaster
@@ -741,11 +745,29 @@ contract LendingMaster is ERC721Holder, Ownable, ILendingMaster {
         address _collectionAddress
     ) internal view {
         require(
-            _collectionAddress != address(0) &&
-                (allowedCollections.contains(_collectionAddress) ||
-                    allowedNLBundles.contains(_collectionAddress)),
+            allowedCollections.contains(_collectionAddress),
             "not acceptable collection address"
         );
+    }
+
+    function _checkAcceptedNLBundle(address _nlBundleAddress) internal view {
+        require(
+            allowedNLBundles.contains(_nlBundleAddress),
+            "not acceptable NLBundle address"
+        );
+    }
+
+    function _setDepositFlag(
+        address _collectionAddress,
+        DepositLimitInfo memory _depositLimit
+    ) internal {
+        require(_collectionAddress != address(0), "invalid zero address");
+        Utils.checkLimitConfig(
+            _depositLimit.minAmount,
+            _depositLimit.maxAmount
+        );
+        depositLimitations[_collectionAddress] = _depositLimit;
+        emit DepositFlagSet(_collectionAddress, _depositLimit);
     }
 
     function _transferBNB(address _to, uint256 _amount) internal {
