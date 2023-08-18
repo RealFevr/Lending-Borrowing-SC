@@ -241,12 +241,30 @@ contract LendingMaster is
         );
         require(!_isLBundleMode || LBundleMode, "LBundleMode disabled");
 
+        if (_isLBundleMode) {
+            depositedIdsPerUser[sender].add(depositId);
+            depositInfo[depositId] = DepositInfo(
+                sender,
+                address(0),
+                0,
+                0,
+                Utils.genUintArrayWithArg(depositId)
+            );
+            collectionInfoPerDeck[depositId] = CollectionInfo(
+                _collections,
+                _tokenIds
+            );
+            depositedIdsPerUser[sender].add(depositId);
+            totalDepositedIds.add(depositId);
+
+            emit LBundleDeposited(_collections, _tokenIds, depositId++);
+        }
+
+        // EFFECTS
         for (uint256 i = 0; i < length; i++) {
             address collection = _collections[i];
             uint256 tokenId = _tokenIds[i];
             _checkCollection(collection, tokenId);
-            IERC721(collection).transferFrom(sender, address(this), tokenId);
-
             if (!_isLBundleMode) {
                 depositedIdsPerUser[sender].add(depositId);
                 depositInfo[depositId] = DepositInfo(
@@ -269,22 +287,11 @@ contract LendingMaster is
             }
         }
 
-        if (_isLBundleMode) {
-            depositedIdsPerUser[sender].add(depositId);
-            depositInfo[depositId] = DepositInfo(
-                sender,
-                address(0),
-                0,
-                0,
-                Utils.genUintArrayWithArg(depositId)
-            );
-            collectionInfoPerDeck[depositId] = CollectionInfo(
-                _collections,
-                _tokenIds
-            );
-            totalDepositedIds.add(depositId);
-
-            emit LBundleDeposited(_collections, _tokenIds, depositId++);
+        // INTERACTIONS
+        for (uint256 i = 0; i < length; i++) {
+            address collection = _collections[i];
+            uint256 tokenId = _tokenIds[i];
+            IERC721(collection).transferFrom(sender, address(this), tokenId);
         }
     }
 
@@ -439,6 +446,7 @@ contract LendingMaster is
             "can not borrow this amount at once"
         );
 
+        // CHECKS AND EFFECTS
         address lender = depositInfo[_depositIds[0]].owner;
         require(lender != sender, "Lender and borrower cannot be the same");
         uint256 remainingAmount = msg.value;
@@ -456,6 +464,30 @@ contract LendingMaster is
             uint256 endTime = startTime + req.lendDuration * 1 days;
             totalWinningRate += req.winningRateForBorrower;
             totalGameFee += req.gameFee;
+
+            info.borrower = sender;
+            info.startTime = startTime;
+            info.endTime = endTime;
+            if (!borrowedIdsPerUser[sender].contains(_depositId)) {
+                borrowedIdsPerUser[sender].add(_depositId);
+            }
+            if (!totalBorrowedIds.contains(_depositId)) {
+                totalBorrowedIds.add(_depositId);
+            }
+        }
+
+        uint256 averageGameFee = totalGameFee / (borrowedIds.length + length);
+        require(
+            totalWinningRate + averageGameFee <= FIXED_POINT,
+            "over max DistRate"
+        );
+        emit Borrowed(_depositIds);
+
+        // INTERACTIONS
+        for (uint256 i = 0; i < length; ++i) {
+            uint256 _depositId = _depositIds[i];
+            DepositInfo memory info = depositInfo[_depositId];
+            LendingReq memory req = lendingReqsPerDeck[_depositId];
             if (req.prepay) {
                 if (req.paymentToken == address(0)) {
                     require(
@@ -481,16 +513,6 @@ contract LendingMaster is
             }
 
             _takeServiceFee(sender, req.paymentToken);
-
-            info.borrower = sender;
-            info.startTime = startTime;
-            info.endTime = endTime;
-            if (!borrowedIdsPerUser[sender].contains(_depositId)) {
-                borrowedIdsPerUser[sender].add(_depositId);
-            }
-            if (!totalBorrowedIds.contains(_depositId)) {
-                totalBorrowedIds.add(_depositId);
-            }
         }
         require(remainingAmount == 0, "sent more funds than necessary");
         uint256 averageGameFee = totalGameFee / (borrowedIds.length + length);
@@ -498,7 +520,6 @@ contract LendingMaster is
             totalWinningRate + averageGameFee <= FIXED_POINT,
             "over max DistRate"
         );
-        emit Borrowed(_depositIds);
     }
 
     /// @inheritdoc ILendingMaster
@@ -511,9 +532,9 @@ contract LendingMaster is
             length <= maxCollectiblesAtOnce,
             "can not withdraw this amount at once"
         );
-        
+
         emit CollectionWithdrawn(_depositIds);
-        
+
         for (uint256 i = 0; i < length; i++) {
             uint256 _depositId = _depositIds[i];
             DepositInfo memory info = depositInfo[_depositId];
