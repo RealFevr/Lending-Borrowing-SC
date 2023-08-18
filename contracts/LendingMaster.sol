@@ -307,7 +307,7 @@ contract LendingMaster is
 
             emit LBundleDeposited(_collections, _tokenIds, depositId++);
         }
-        
+
         // INTERACTIONS
         for (uint256 i = 0; i < length; i++) {
             address collection = _collections[i];
@@ -478,7 +478,7 @@ contract LendingMaster is
         address lender = depositInfo[_depositIds[0]].owner;
         require(lender != sender, "Lender and borrower cannot be the same");
         uint256 remainingAmount = msg.value;
-        
+
         for (uint256 i = 0; i < length; i++) {
             uint256 _depositId = _depositIds[i];
             DepositInfo storage info = depositInfo[_depositId];
@@ -545,11 +545,6 @@ contract LendingMaster is
             _takeServiceFee(sender, req.paymentToken);
         }
         require(remainingAmount == 0, "sent more funds than necessary");
-        uint256 averageGameFee = totalGameFee / (borrowedIds.length + length);
-        require(
-            totalWinningRate + averageGameFee <= FIXED_POINT,
-            "over max DistRate"
-        );
     }
 
     /// @inheritdoc ILendingMaster
@@ -771,7 +766,7 @@ contract LendingMaster is
         CollectionInfo memory collectionInfo = collectionInfoPerDeck[
             _depositId
         ];
-        
+
         bool removed = depositedIdsPerUser[_owner].remove(_depositId);
         require(removed, "fails when removing deposit id");
         removed = totalDepositedIds.remove(_depositId);
