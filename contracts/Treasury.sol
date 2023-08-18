@@ -92,7 +92,8 @@ contract Treasury is Ownable, ITreasury {
                 .getAmountsOut(_amount, path)[path.length == 3 ? 2 : 1];
             uint256 amountWithSlippage = (expectedAmount * SLIPPAGE) / 1000;
             uint256 beforeBal = IERC20(fevrToken).balanceOf(address(this));
-            IERC20(_paymentToken).approve(dexRouter, _amount);
+            bool approved = IERC20(_paymentToken).approve(dexRouter, _amount);
+            require(approved, "dex approval failed");
             IUniswapV2Router02(dexRouter)
                 .swapExactTokensForTokensSupportingFeeOnTransferTokens(
                     _amount,

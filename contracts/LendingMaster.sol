@@ -266,7 +266,8 @@ contract LendingMaster is
             uint256 tokenId = _tokenIds[i];
             _checkCollection(collection, tokenId);
             if (!_isLBundleMode) {
-                depositedIdsPerUser[sender].add(depositId);
+                bool added = depositedIdsPerUser[sender].add(depositId);
+                require(added, "fails when adding deposit id");
                 depositInfo[depositId] = DepositInfo(
                     sender,
                     address(0),
@@ -278,7 +279,8 @@ contract LendingMaster is
                     Utils.genAddressArrayWithArg(collection),
                     Utils.genUintArrayWithArg(tokenId)
                 );
-                totalDepositedIds.add(depositId);
+                added = totalDepositedIds.add(depositId);
+                require(added, "fails when adding deposit id");
                 emit SingleCollectionDeposited(
                     collection,
                     tokenId,
@@ -286,7 +288,26 @@ contract LendingMaster is
                 );
             }
         }
+        if (_isLBundleMode) {
+            bool added = depositedIdsPerUser[sender].add(depositId);
+            require(added, "fails when adding deposit id");
+            depositInfo[depositId] = DepositInfo(
+                sender,
+                address(0),
+                0,
+                0,
+                Utils.genUintArrayWithArg(depositId)
+            );
+            collectionInfoPerDeck[depositId] = CollectionInfo(
+                _collections,
+                _tokenIds
+            );
+            added = totalDepositedIds.add(depositId);
+            require(added, "fails when adding deposit id");
 
+            emit LBundleDeposited(_collections, _tokenIds, depositId++);
+        }
+        
         // INTERACTIONS
         for (uint256 i = 0; i < length; i++) {
             address collection = _collections[i];
@@ -320,8 +341,8 @@ contract LendingMaster is
                 depositLimitations[_bundleAddress].maxAmount,
             "exceeds to depositLimitation"
         );
-
-        depositedIdsPerUser[sender].add(depositId);
+        bool added = depositedIdsPerUser[sender].add(depositId);
+        require(added, "fails when adding deposit id");
         depositInfo[depositId] = DepositInfo(
             sender,
             address(0),
@@ -334,8 +355,8 @@ contract LendingMaster is
             Utils.genAddressArrayWithArg(_bundleAddress),
             Utils.genUintArrayWithArg(_tokenId)
         );
-
-        totalDepositedIds.add(depositId);
+        added = totalDepositedIds.add(depositId);
+        require(added, "fails when adding deposit id");
 
         emit NLBundleDeposited(_bundleAddress, _tokenId, depositId++);
 
@@ -366,11 +387,15 @@ contract LendingMaster is
                 !listedIdsPerUser[sender].contains(_depositId),
                 "listed for lend"
             );
-            depositedIdsPerUser[sender].remove(_depositId);
-            totalDepositedIds.remove(_depositId);
+            bool removed = depositedIdsPerUser[sender].remove(_depositId);
+            require(removed, "fails when removing deposit id");
+            removed = totalDepositedIds.remove(_depositId);
+            require(removed, "fails when removing deposit id");
         }
-        depositedIdsPerUser[sender].add(depositId);
-        listedIdsPerUser[sender].add(depositId);
+        bool added = depositedIdsPerUser[sender].add(depositId);
+        require(added, "fails when adding deposit id");
+        added = listedIdsPerUser[sender].add(depositId);
+        require(added, "fails when adding deposit id");
         depositInfo[depositId] = DepositInfo(
             sender,
             address(0),
@@ -378,7 +403,8 @@ contract LendingMaster is
             0,
             _depositIds
         );
-        totalDepositedIds.add(depositId++);
+        added = totalDepositedIds.add(depositId++);
+        require(added, "fails when adding deposit id");
         emit LBundleMade(_depositIds);
     }
 
@@ -423,8 +449,10 @@ contract LendingMaster is
                 "invalid prepay settings"
             );
             lendingReqsPerDeck[_depositId] = req;
-            listedIdsPerUser[sender].add(_depositId);
-            totalListedIds.add(_depositId);
+            bool added = listedIdsPerUser[sender].add(_depositId);
+            require(added, "fails when adding deposit id");
+            added = totalListedIds.add(_depositId);
+            require(added, "fails when adding deposit id");
         }
         emit Lent(_depositIds, _lendingReqs);
     }
@@ -469,10 +497,12 @@ contract LendingMaster is
             info.startTime = startTime;
             info.endTime = endTime;
             if (!borrowedIdsPerUser[sender].contains(_depositId)) {
-                borrowedIdsPerUser[sender].add(_depositId);
+                bool added = borrowedIdsPerUser[sender].add(_depositId);
+                require(added, "fails when adding deposit id");
             }
             if (!totalBorrowedIds.contains(_depositId)) {
-                totalBorrowedIds.add(_depositId);
+                bool added = totalBorrowedIds.add(_depositId);
+                require(added, "fails when adding deposit id");
             }
         }
 
@@ -741,12 +771,16 @@ contract LendingMaster is
         CollectionInfo memory collectionInfo = collectionInfoPerDeck[
             _depositId
         ];
-
-        depositedIdsPerUser[_owner].remove(_depositId);
-        totalDepositedIds.remove(_depositId);
+        
+        bool removed = depositedIdsPerUser[_owner].remove(_depositId);
+        require(removed, "fails when removing deposit id");
+        removed = totalDepositedIds.remove(_depositId);
+        require(removed, "fails when removing deposit id");
         if (listedIdsPerUser[_owner].contains(_depositId)) {
-            listedIdsPerUser[_owner].remove(_depositId);
-            totalListedIds.remove(_depositId);
+            removed = listedIdsPerUser[_owner].remove(_depositId);
+            require(removed, "fails when removing deposit id");
+            removed = totalListedIds.remove(_depositId);
+            require(removed, "fails when removing deposit id");
         }
 
         for (uint256 j = 0; j < collectionInfo.collections.length; j++) {
