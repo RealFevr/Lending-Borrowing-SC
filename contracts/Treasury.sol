@@ -14,13 +14,17 @@ contract Treasury is Ownable, ITreasury {
     /// @dev The address to burn tokens.
     address constant DEAD = 0x000000000000000000000000000000000000dEaD;
 
-    address public fevrToken;
+    address public immutable fevrToken;
 
     address public dexRouter;
 
     address public lendingMaster;
 
-    uint16 public FIXED_POINT = 1000;
+    uint16 public constant FIXED_POINT = 1000;
+
+    // @dev We are calculating `amountWithSlippage = expectedAmount * slippage / 1000.
+    // @dev So, if we set slippage to 1000, it means no slippage at all, because 1000 / 1000 = 1.
+    uint256 private SLIPPAGE = 1000;
 
     modifier onlyLendingMaster() {
         require(msg.sender == lendingMaster, "only lendingMaster");
@@ -35,9 +39,30 @@ contract Treasury is Ownable, ITreasury {
     }
 
     /// @inheritdoc ITreasury
+    function setSlippage(uint256 _slippage) external onlyOwner {
+        require(_slippage > 0 && _slippage <= 1000, "invalid slippage value");
+        require(_slippage != SLIPPAGE, "slippage value already set");
+        SLIPPAGE = _slippage;
+    }
+
+    /// @inheritdoc ITreasury
     function setLendingMaster(address _lendingMaster) external onlyOwner {
         require(_lendingMaster != address(0), "zero lendingMaster address");
         lendingMaster = _lendingMaster;
+    }
+
+    /// @inheritdoc ITreasury
+    function setFevrToken(address _fevrToken) external onlyOwner {
+        require(_fevrToken != address(0), "zero fevr token address");
+        require(_fevrToken != fevrToken, "fevr token address already set");
+        fevrToken = _fevrToken;
+    }
+
+    /// @inheritdoc ITreasury
+    function setDexRouter(address _dexRouter) external override onlyOwner {
+        require(_dexRouter != address(0), "invalid zero address");
+        require(_dexRouter != dexRouter, "dex router already set");
+        dexRouter = _dexRouter;
     }
 
     /// @inheritdoc ITreasury
@@ -50,8 +75,9 @@ contract Treasury is Ownable, ITreasury {
         if (_paymentToken != fevrToken) {
             address WETH = IUniswapV2Router02(dexRouter).WETH();
             address[] memory path;
-            if (_paymentToken == address(0)) {
-                IWBNB(WETH).deposit{value: _amount}();
+            if (_paymentToken == address(0) || _paymentToken == WETH) {
+                if (_paymentToken == address(0))
+                    IWBNB(WETH).deposit{value: _amount}();
                 path = new address[](2);
                 path[0] = WETH;
                 path[1] = fevrToken;
@@ -62,13 +88,15 @@ contract Treasury is Ownable, ITreasury {
                 path[1] = WETH;
                 path[2] = fevrToken;
             }
-
+            uint256 expectedAmount = IUniswapV2Router02(dexRouter)
+                .getAmountsOut(_amount, path)[path.length == 3 ? 2 : 1];
+            uint256 amountWithSlippage = (expectedAmount * SLIPPAGE) / 1000;
             uint256 beforeBal = IERC20(fevrToken).balanceOf(address(this));
             IERC20(_paymentToken).approve(dexRouter, _amount);
             IUniswapV2Router02(dexRouter)
                 .swapExactTokensForTokensSupportingFeeOnTransferTokens(
                     _amount,
-                    0,
+                    amountWithSlippage,
                     path,
                     address(this),
                     block.timestamp
@@ -90,16 +118,15 @@ contract Treasury is Ownable, ITreasury {
                 (IERC20(_token).balanceOf(address(this)) > 0),
             "no withdrawable amount"
         );
-        uint256 claimableAmount;
+        uint256 claimableAmount = _token == address(0)
+            ? address(this).balance
+            : IERC20(_token).balanceOf(address(this));
+        emit TokenWithdrawn(_token, claimableAmount);
         if (_token == address(0)) {
-            claimableAmount = address(this).balance;
             _transferBNB(sender, claimableAmount);
         } else {
-            claimableAmount = IERC20(_token).balanceOf(address(this));
             IERC20(_token).safeTransfer(owner(), claimableAmount);
         }
-
-        emit TokenWithdrawn(_token, claimableAmount);
     }
 
     receive() external payable {}
