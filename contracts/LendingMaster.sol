@@ -242,6 +242,7 @@ contract LendingMaster is
             emit LBundleDeposited(_collections, _tokenIds, depositId++);
         }
 
+        // EFFECTS
         for (uint256 i = 0; i < length; i++) {
             address collection = _collections[i];
             uint256 tokenId = _tokenIds[i];
@@ -267,7 +268,12 @@ contract LendingMaster is
                     depositId++
                 );
             }
+        }
 
+        // INTERACTIONS
+        for (uint256 i = 0; i < length; i++) {
+            address collection = _collections[i];
+            uint256 tokenId = _tokenIds[i];
             IERC721(collection).transferFrom(sender, address(this), tokenId);
         }
     }
